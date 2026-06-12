@@ -1,0 +1,32 @@
+---
+title: jheader-proxy
+description: iPhone から開発・検証サイトへ特定のHTTPヘッダーを付与する、macOS用のローカルHTTP/HTTPSプロキシCLI
+template: splash
+hero:
+  tagline: iPhone Safari から開発サイトへ、対象ドメインだけにヘッダーを付与
+  actions:
+    - text: はじめる
+      link: /jheader-proxy/getting-started/overview/
+      icon: right-arrow
+    - text: GitHub
+      link: https://github.com/junara/jheader-proxy
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="対象ドメイン限定" icon="approve-check">
+    指定ドメインとそのサブドメインだけにヘッダーを付与。それ以外は素通しします。
+  </Card>
+  <Card title="HTTPS MITM" icon="seti:lock">
+    自分専用CAでTLSを復号し、TLS内のリクエストにもヘッダーを追加します。
+  </Card>
+  <Card title="安全側の既定" icon="warning">
+    機密ヘッダーのログ自動マスク、クライアントIP許可リスト、既定10分で自動停止。
+  </Card>
+  <Card title="クリーンな構成" icon="setting">
+    Go製のシンプルなCLI。`--gen-ca` で自分専用CAも生成できます。
+  </Card>
+</CardGrid>
