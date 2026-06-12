@@ -1,0 +1,51 @@
+version: "2"
+
+linters:
+  default: all
+  disable:
+    # コードベースの方針と衝突する／過度に opinionated なものは除外する。
+    - exhaustruct      # 全フィールド初期化の強制（http.Server 等で非現実的）
+    - gochecknoglobals # main.version などの正当なパッケージ変数を弾く
+    - mnd              # 0o600 / 2048 / タイムアウト等の正当な定数を大量に弾く
+    - wsl              # 空白行スタイル（過度に細かい）
+    - wsl_v5           # 同上
+    - nlreturn         # return 前の空行強制
+    - varnamelen       # 短い変数名（i, t, s 等）を弾く
+    - ireturn          # インターフェースを返すことの一律禁止
+    - nonamedreturns   # 名前付き戻り値（ParseHeaderSpec 等で可読性に寄与）
+    - err113           # 動的 error の一律禁止（CLI の検証エラーで多用）
+    - wrapcheck        # 外部 error の wrap 強制（過度に冗長）
+    - forbidigo        # fmt.Print* 禁止（CLI のユーザー出力で正当に使用）
+    - testpackage      # ブラックボックステスト強制（非公開関数の検証ができない）
+    - paralleltest     # 全テストへの t.Parallel() 強制
+    - godot            # コメント末尾のピリオド強制（日本語コメントの「。」と非互換）
+    - depguard         # 依存許可リスト（本プロジェクトでは不要）
+    - noinlineerr      # `if err := ...; err != nil` は慣用的。非idiomaticな強制を避ける
+    - gomodguard       # 非推奨（v2.12）。単体では警告が出るため無効化
+
+  settings:
+    cyclop:
+      max-complexity: 15
+    funlen:
+      lines: 80
+      statements: 50
+    gosec:
+      excludes:
+        - G304 # ファイルパスは CLI 引数として正当に受け取る
+        - G118 # シャットダウンは親ctxとは独立した background ctx を使うのが意図
+
+  exclusions:
+    rules:
+      # テストでは定数化・コンテキスト付与・権限・行長の指摘を緩める。
+      - path: _test\.go
+        linters:
+          - goconst
+          - gosec
+          - noctx
+          - lll
+          - dupl
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
