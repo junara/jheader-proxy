@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"io"
@@ -143,6 +144,42 @@ func TestServeDoesNotAddHeadersToNonTarget(t *testing.T) {
 	}
 }
 
+// TestServeTunnelsNonTargetOverHTTPSWithoutHeader は、対象外ドメインへの HTTPS は
+// MITM せず素のトンネルとして通し、ヘッダーが付与されない(復号もしない)ことを確認する。
+func TestServeTunnelsNonTargetOverHTTPSWithoutHeader(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Echo-Debug", r.Header.Get("X-Debug-User"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	caCert := testCA(t)
+	headers, _ := domain.ParseHeaders([]string{"X-Debug-User=jun"})
+	proxyURL, stop := startProxy(t, usecase.ProxyConfig{
+		Matcher: domain.NewMatcher([]string{"other.test"}), // 上流(127.0.0.1)は対象外 → トンネル
+		Headers: headers,
+		CA:      caCert,
+	})
+	defer stop()
+
+	// トンネルなので MITM されない。クライアントは上流の実サーバ証明書を直接検証する。
+	pool := x509.NewCertPool()
+	pool.AddCert(upstream.Certificate())
+	client := httpsProxyClient(t, proxyURL, pool)
+	resp, err := client.Get(upstream.URL)
+	if err != nil {
+		t.Fatalf("tunneled HTTPS GET: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Echo-Debug"); got != "" {
+		t.Errorf("tunneled (non-target): header should be absent, got %q", got)
+	}
+}
+
 func TestServeDeniesDisallowedClient(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -247,6 +284,22 @@ func proxyClient(t *testing.T, proxyURL string) *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{Proxy: http.ProxyURL(pu)},
 		Timeout:   3 * time.Second,
+	}
+}
+
+// httpsProxyClient はプロキシ経由で、roots を信頼して TLS 検証する HTTP クライアントを返す。
+func httpsProxyClient(t *testing.T, proxyURL string, roots *x509.CertPool) *http.Client {
+	t.Helper()
+	pu, err := url.Parse(proxyURL)
+	if err != nil {
+		t.Fatalf("parse proxy url: %v", err)
+	}
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy:           http.ProxyURL(pu),
+			TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
+		},
+		Timeout: 5 * time.Second,
 	}
 }
 
