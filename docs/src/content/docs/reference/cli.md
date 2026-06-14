@@ -20,6 +20,9 @@ description: jheader-proxy の全コマンドライン引数
 | `--gen-ca` | `--ca-cert`/`--ca-key` のパスに新しい CA を生成して終了する |
 | `--force` | `--gen-ca` 時に既存ファイルを上書きする |
 | `--version` | バージョンを表示して終了する |
+| `--gui` | ローカル Web 管理画面を起動する（[Web GUI](/jheader-proxy/usage/gui/)） |
+| `--gui-listen` | `--gui` 時の管理画面の待受アドレス。デフォルトは `127.0.0.1:9090` |
+| `--no-open` | `--gui` 時にブラウザを自動起動しない |
 
 ## 起動例
 
@@ -43,6 +46,16 @@ description: jheader-proxy の全コマンドライン引数
 - RSA 2048bit、有効期限約10年の自己署名 CA を生成します
 - 秘密鍵ファイルはパーミッション `0600` で書き出します
 - 既存ファイルがある場合はエラー（`--force` で上書き）
+
+## GUI起動例
+
+```bash
+./jheader-proxy --gui
+# 管理画面ポートを変える場合
+./jheader-proxy --gui --gui-listen 127.0.0.1:9191
+```
+
+`http://127.0.0.1:9090`（または指定ポート）で管理画面が開きます。詳しくは [Web GUI](/jheader-proxy/usage/gui/) を参照してください。
 
 ## エラー終了する条件
 

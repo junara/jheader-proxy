@@ -29,7 +29,8 @@ export default defineConfig({
 				{
 					label: '使い方',
 					items: [
-						{ label: 'CA証明書とiPhone設定', slug: 'usage/ca' },
+						{ label: 'Web GUI', slug: 'usage/gui' },
+						{ label: 'CA証明書とiPhone/Android設定', slug: 'usage/ca' },
 						{ label: 'ヘッダー付与と対象ドメイン', slug: 'usage/headers' },
 						{ label: '実行時オプション', slug: 'usage/runtime' },
 					],
