@@ -24,6 +24,26 @@ type RunProxyInput struct {
 	OnReady func()
 }
 
+// caExpiryWarnThreshold はCA証明書の残り有効期間がこれを下回ると起動ログで
+// 警告する閾値。
+const caExpiryWarnThreshold = 14 * 24 * time.Hour
+
+// logCAExpiry はCA証明書の有効期限と残り日数を起動ログに出す。期限切れ・期限間近は
+// 警告する。検証端末でCAを更新し忘れて MITM が突然失敗するのを未然に気付けるようにする。
+func logCAExpiry(logger Logger, notAfter time.Time) {
+	const day = 24 * time.Hour
+	date := notAfter.Format("2006-01-02")
+	remaining := time.Until(notAfter)
+	switch {
+	case remaining <= 0:
+		logger.Printf("WARNING: CA certificate expired on %s; regenerate it with --gen-ca --force", date)
+	case remaining <= caExpiryWarnThreshold:
+		logger.Printf("WARNING: CA certificate expires soon: %s (in %d days)", date, int(remaining/day))
+	default:
+		logger.Printf("CA expires: %s (in %d days)", date, int(remaining/day))
+	}
+}
+
 // RunProxy はCAを読み込み、ヘッダーを付与するプロキシを起動する。
 type RunProxy struct {
 	ca     CAProvider
@@ -69,6 +89,9 @@ func (u *RunProxy) Execute(ctx context.Context, in RunProxyInput) error {
 	u.logger.Printf("proxy listening on %s", in.Listen)
 	u.logger.Printf("target domains: %s", strings.Join(in.Domains, ", "))
 	u.logger.Printf("CA certificate: %s", in.CACertPath)
+	if cert.Leaf != nil {
+		logCAExpiry(u.logger, cert.Leaf.NotAfter)
+	}
 	if in.Duration > 0 {
 		u.logger.Printf("auto-stop after %s", in.Duration)
 	}

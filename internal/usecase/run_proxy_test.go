@@ -4,10 +4,19 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/junara/jheader-proxy/internal/domain"
 )
+
+type recordingLogger struct{ lines []string }
+
+func (r *recordingLogger) Printf(format string, args ...any) {
+	r.lines = append(r.lines, fmt.Sprintf(format, args...))
+}
 
 type fakeCAProvider struct {
 	cert *tls.Certificate
@@ -87,6 +96,29 @@ func TestRunProxyValidation(t *testing.T) {
 		}
 		if server.called {
 			t.Errorf("%s: Serve should not be called on invalid input", name)
+		}
+	}
+}
+
+func TestLogCAExpiry(t *testing.T) {
+	cases := []struct {
+		name     string
+		notAfter time.Time
+		wantSub  string
+	}{
+		{"expired", time.Now().Add(-24 * time.Hour), "expired on"},
+		{"expiring soon", time.Now().Add(3 * 24 * time.Hour), "expires soon"},
+		{"far future", time.Now().Add(365 * 24 * time.Hour), "CA expires:"},
+	}
+	for _, c := range cases {
+		lg := &recordingLogger{}
+		logCAExpiry(lg, c.notAfter)
+		if len(lg.lines) != 1 {
+			t.Errorf("%s: got %d lines, want 1: %v", c.name, len(lg.lines), lg.lines)
+			continue
+		}
+		if !strings.Contains(lg.lines[0], c.wantSub) {
+			t.Errorf("%s: line = %q, want contains %q", c.name, lg.lines[0], c.wantSub)
 		}
 	}
 }
