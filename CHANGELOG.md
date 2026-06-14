@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 このプロジェクトの主な変更点を記録します。フォーマットは [Keep a Changelog](https://keepachangelog.com/),バージョニングは [Semantic Versioning](https://semver.org/) に従います。
 
+## [0.3.0] - 2026-06-14
+
+### Features
+
+- **gui**: Web GUIとCA配布ポータルをダークモードに対応
+- **cli**: 引数なし実行で使い方とオプション一覧を表示（日本語）
+
+### Documentation
+
+- READMEのプロジェクト構成を現状に更新
+- Web GUIの実画面スクリーンショットを掲載
+
 ## [0.2.0] - 2026-06-14
 
 ### Features
