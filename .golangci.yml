@@ -22,6 +22,7 @@ linters:
     - depguard         # 依存許可リスト（本プロジェクトでは不要）
     - noinlineerr      # `if err := ...; err != nil` は慣用的。非idiomaticな強制を避ける
     - gomodguard       # 非推奨（v2.12）。単体では警告が出るため無効化
+    - gosmopolitan     # CLI のヘルプ/メッセージは日本語UIを意図しているため許可
 
   settings:
     cyclop:

@@ -6,6 +6,7 @@ package cli
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"strings"
 
@@ -119,84 +120,122 @@ func applyConfig(rc *config.RunConfig, path string, fs *flag.FlagSet) error {
 	return nil
 }
 
+// usageTemplate は使い方の概要・代表的な実行例の書式。%[1]s はプログラム名。
+const usageTemplate = `%[1]s - 対象ドメインへのリクエストに HTTP ヘッダーを付与するローカル HTTP/HTTPS プロキシ。
+
+使い方:
+  %[1]s --domain <ホスト> --header <Name=Value> --ca-cert <パス> --ca-key <パス> [オプション]
+  %[1]s --gen-ca --ca-cert <パス> --ca-key <パス>   # 自分専用のCAを生成（HTTPSに必須）
+  %[1]s --gui                                       # ブラウザの管理画面で操作
+  %[1]s --config <ファイル>                          # 設定をJSONファイルから読む
+
+例:
+  %[1]s --gen-ca --ca-cert ca-cert.pem --ca-key ca-key.pem
+  %[1]s --domain example.test --header "X-Debug-User=jun" --ca-cert ca-cert.pem --ca-key ca-key.pem
+
+オプション:
+`
+
+// writeUsage は使い方の概要・代表的な実行例・オプション一覧を出力する。
+// 引数なし実行時と -h/--help 時の両方で使う。
+func writeUsage(fs *flag.FlagSet, name string) {
+	_, _ = io.WriteString(fs.Output(), fmt.Sprintf(usageTemplate, name))
+	fs.PrintDefaults()
+}
+
+// parseFlags は Parse がフラグ束縛先としてまとめて使う値の集合。
+type parseFlags struct {
+	rc          config.RunConfig
+	domains     stringList
+	headers     headerList
+	allow       stringList
+	genCA       bool
+	force       bool
+	showVersion bool
+	gui         bool
+	guiListen   string
+	noOpen      bool
+	configPath  string
+}
+
+// bindFlags は fs に全フラグを登録し、束縛先 f を結びつける。
+func bindFlags(fs *flag.FlagSet, f *parseFlags) {
+	fs.StringVar(&f.configPath, "config", "",
+		"設定をまとめた JSON ファイルのパス（GUIの config.json と互換。コマンドライン引数が優先）")
+	fs.StringVar(&f.rc.Listen, "listen", ":8080", "プロキシの待受アドレス（例: :8080）")
+	fs.Var(&f.domains, "domain", "ヘッダー付与の対象ドメイン（複数指定可・サブドメインも対象）")
+	fs.Var(&f.headers, "header", "付与するヘッダー（Name=Value 形式・複数指定可）")
+	fs.Var(&f.allow, "allow", "接続を許可するクライアントの IP / CIDR（複数指定可・未指定で全許可）")
+	fs.StringVar(&f.rc.CACertPath, "ca-cert", "", "HTTPS MITM に使う CA 証明書 PEM のパス（必須）")
+	fs.StringVar(&f.rc.CAKeyPath, "ca-key", "", "HTTPS MITM に使う CA 秘密鍵 PEM のパス（必須）")
+	fs.StringVar(&f.rc.Duration, "duration", "10m", "この時間が過ぎると自動停止（例: 30m。0 で無制限）")
+	fs.BoolVar(&f.genCA, "gen-ca", false, "--ca-cert/--ca-key に新しい CA を生成して終了する")
+	fs.BoolVar(&f.force, "force", false, "--gen-ca 時に既存ファイルを上書きする")
+	fs.BoolVar(&f.rc.Quiet, "quiet", false, "リクエストごとのログを抑制する")
+	fs.BoolVar(&f.rc.Verbose, "verbose", false, "対象ドメインのレスポンスもログ出力する")
+	fs.BoolVar(&f.rc.Redact, "redact", false, "起動ログで全ヘッダー値をマスクする")
+	fs.BoolVar(&f.showVersion, "version", false, "バージョンを表示して終了する")
+	fs.BoolVar(&f.gui, "gui", false, "ブラウザで操作するローカル Web 管理画面を起動する")
+	fs.StringVar(&f.guiListen, "gui-listen", "127.0.0.1:9090", "--gui 時の管理画面の待受アドレス")
+	fs.BoolVar(&f.noOpen, "no-open", false, "--gui 時にブラウザを自動起動しない")
+}
+
 // Parse は args を Command に解析する。フラグエラー(-h を含む)は、使用方法を
-// output に書き出した上でそのまま返す。
+// output に書き出した上でそのまま返す。引数なしの場合も使い方を表示する。
 func Parse(name string, args []string, output io.Writer) (*Command, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(output)
+	fs.Usage = func() { writeUsage(fs, name) }
 
-	var (
-		rc          config.RunConfig
-		domains     stringList
-		headers     headerList
-		allow       stringList
-		genCA       bool
-		force       bool
-		showVersion bool
-		gui         bool
-		guiListen   string
-		noOpen      bool
-		configPath  string
-	)
-	fs.StringVar(&configPath, "config", "",
-		"path to a JSON config file (GUI's config.json is compatible); command-line flags override its values")
-	fs.StringVar(&rc.Listen, "listen", ":8080", "proxy listen address (e.g. :8080)")
-	fs.Var(&domains, "domain", "target domain (repeatable; subdomains are included)")
-	fs.Var(&headers, "header", `header to add in "Name=Value" form (repeatable)`)
-	fs.Var(&allow, "allow", "allowed client IP or CIDR (repeatable; default allows all)")
-	fs.StringVar(&rc.CACertPath, "ca-cert", "", "path to the CA certificate PEM used for HTTPS MITM (required)")
-	fs.StringVar(&rc.CAKeyPath, "ca-key", "", "path to the CA private key PEM used for HTTPS MITM (required)")
-	fs.StringVar(&rc.Duration, "duration", "10m", "auto-stop after this duration, e.g. 30m (0 to disable)")
-	fs.BoolVar(&genCA, "gen-ca", false, "generate a new CA at --ca-cert/--ca-key and exit")
-	fs.BoolVar(&force, "force", false, "with --gen-ca, overwrite existing files")
-	fs.BoolVar(&rc.Quiet, "quiet", false, "suppress per-request logs")
-	fs.BoolVar(&rc.Verbose, "verbose", false, "also log responses for target domains")
-	fs.BoolVar(&rc.Redact, "redact", false, "mask all header values in the startup log")
-	fs.BoolVar(&showVersion, "version", false, "print version and exit")
-	fs.BoolVar(&gui, "gui", false, "launch the local web GUI to configure and control the proxy")
-	fs.StringVar(&guiListen, "gui-listen", "127.0.0.1:9090", "with --gui, the management UI listen address")
-	fs.BoolVar(&noOpen, "no-open", false, "with --gui, do not open the browser automatically")
+	var f parseFlags
+	bindFlags(fs, &f)
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
 
-	if showVersion {
+	// 引数なしで実行されたら、エラーにせず使い方とオプション一覧を表示して終了する。
+	if len(args) == 0 {
+		fs.Usage()
+		return nil, flag.ErrHelp
+	}
+
+	if f.showVersion {
 		return &Command{Mode: ModeVersion}, nil
 	}
 
 	// 繰り返しフラグを RunConfig へ移し、--config 指定時は明示しなかった項目だけ
 	// 設定ファイルの値で埋める。
-	rc.Domains = domains
-	rc.Headers = headers
-	rc.Allow = allow
-	if configPath != "" {
-		if err := applyConfig(&rc, configPath, fs); err != nil {
+	f.rc.Domains = f.domains
+	f.rc.Headers = f.headers
+	f.rc.Allow = f.allow
+	if f.configPath != "" {
+		if err := applyConfig(&f.rc, f.configPath, fs); err != nil {
 			return nil, err
 		}
 	}
 
-	if gui {
+	if f.gui {
 		return &Command{
 			Mode: ModeGUI,
-			GUI:  GUIOptions{Listen: guiListen, NoOpen: noOpen},
+			GUI:  GUIOptions{Listen: f.guiListen, NoOpen: f.noOpen},
 		}, nil
 	}
-	if genCA {
+	if f.genCA {
 		return &Command{
 			Mode:  ModeGenCA,
-			GenCA: usecase.GenerateCAInput{CertPath: rc.CACertPath, KeyPath: rc.CAKeyPath, Force: force},
+			GenCA: usecase.GenerateCAInput{CertPath: f.rc.CACertPath, KeyPath: f.rc.CAKeyPath, Force: f.force},
 		}, nil
 	}
 
-	input, err := config.ToRunProxyInput(rc)
+	input, err := config.ToRunProxyInput(f.rc)
 	if err != nil {
 		return nil, err
 	}
 	return &Command{
 		Mode:    ModeRun,
-		Quiet:   rc.Quiet,
-		Verbose: rc.Verbose,
+		Quiet:   f.rc.Quiet,
+		Verbose: f.rc.Verbose,
 		Run:     input,
 	}, nil
 }

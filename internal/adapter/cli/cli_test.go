@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"bytes"
+	"errors"
+	"flag"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -118,6 +122,23 @@ func TestParseConfigMissingFile(t *testing.T) {
 	}, io.Discard)
 	if err == nil {
 		t.Error("Parse with missing --config file returned nil error, want error")
+	}
+}
+
+func TestParseNoArgsShowsUsage(t *testing.T) {
+	var buf bytes.Buffer
+	cmd, err := Parse("jheader-proxy", []string{}, &buf)
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("Parse([]) err = %v, want flag.ErrHelp", err)
+	}
+	if cmd != nil {
+		t.Errorf("Parse([]) cmd = %+v, want nil", cmd)
+	}
+	out := buf.String()
+	for _, want := range []string{"使い方:", "--gen-ca", "--gui", "オプション:", "-domain"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("usage output missing %q\n--- output ---\n%s", want, out)
+		}
 	}
 }
 
