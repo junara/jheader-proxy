@@ -1,0 +1,69 @@
+# git-cliff configuration
+# Conventional Commits からリポジトリの CHANGELOG.md を生成する。
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+# CHANGELOG 冒頭のヘッダ。
+header = """
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+このプロジェクトの主な変更点を記録します。フォーマットは [Keep a Changelog](https://keepachangelog.com/),\
+ バージョニングは [Semantic Versioning](https://semver.org/) に従います。\n
+"""
+# 各リリースの本文テンプレート（Tera）。
+body = """
+{% if version %}\
+    ## [{{ version | trim_start_matches(pat="v") }}]\
+    {% if release_link %}({{ release_link }}){% endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {% if commit.scope %}**{{ commit.scope }}**: {% endif %}\
+            {{ commit.message | upper_first }}\
+    {% endfor %}
+{% endfor %}\n
+"""
+footer = ""
+# 行頭・行末の余分な空白を取り除く。
+trim = true
+
+[git]
+# Conventional Commits としてパースする。
+conventional_commits = true
+# 規約に沿わないコミットは除外する。
+filter_unconventional = true
+# コミットを分割しない。
+split_commits = false
+# コミットメッセージの前処理。
+commit_preprocessors = [
+    # PR 番号 (#123) を GitHub へのリンクに変換する。
+    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/junara/jheader-proxy/issues/${2}))" },
+]
+# type ごとのグループ分けと表示順。
+commit_parsers = [
+    # CHANGELOG 自体の自動更新コミットは載せない。
+    { message = "^docs: update CHANGELOG", skip = true },
+    { message = "^feat", group = "<!-- 0 -->Features" },
+    { message = "^fix", group = "<!-- 1 -->Bug Fixes" },
+    { message = "^perf", group = "<!-- 2 -->Performance" },
+    { message = "^refactor", group = "<!-- 3 -->Refactor" },
+    { message = "^docs", group = "<!-- 4 -->Documentation" },
+    { message = "^build", group = "<!-- 5 -->Build System" },
+    { message = "^ci", skip = true },
+    { message = "^test", skip = true },
+    { message = "^chore", skip = true },
+    { message = "^style", skip = true },
+    { body = ".*security", group = "<!-- 6 -->Security" },
+    { message = ".*", group = "<!-- 7 -->Other" },
+]
+# タグ以外のコミットも protect する。
+protect_breaking_commits = false
+# 古い順（asc）でセクション内を並べる。
+sort_commits = "oldest"
+# 対象とするタグ（v で始まるもの）。
+tag_pattern = "v[0-9]*"
