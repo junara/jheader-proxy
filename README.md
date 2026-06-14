@@ -380,23 +380,39 @@ go build -ldflags "-X main.version=v1.0.0" -o jheader-proxy ./cmd/jheader-proxy
 .
 ├── cmd/
 │   └── jheader-proxy/
-│       └── main.go              # 合成ルート（依存を組み立てて実行）
+│       └── main.go              # 合成ルート（依存を組み立ててモードごとに実行）
 ├── internal/
 │   ├── domain/                  # エンティティ／値オブジェクト（標準ライブラリのみ依存）
 │   │   ├── matcher.go           #   対象ドメイン判定
-│   │   └── header.go            #   追加ヘッダーの解析・保持
+│   │   ├── header.go            #   追加ヘッダーの解析・保持
+│   │   └── allowlist.go         #   接続元IP/CIDRの許可判定
 │   ├── usecase/                 # アプリケーションのユースケースとポート（interface）
 │   │   ├── ports.go             #   CAProvider / CAGenerator / ProxyServer / Logger
-│   │   ├── run_proxy.go         #   プロキシ起動ユースケース
+│   │   ├── run_proxy.go         #   プロキシ起動ユースケース（CA有効期限の警告も）
 │   │   └── generate_ca.go       #   CA生成ユースケース
-│   ├── adapter/
-│   │   └── cli/                 # インターフェースアダプタ（フラグ解析）
-│   │       └── cli.go
+│   ├── config/                  # 設定スキーマと変換（CLIとGUIで共有）
+│   │   └── config.go            #   RunConfig・ファイル読込・ToRunProxyInput
+│   ├── adapter/                 # インターフェースアダプタ（入力 → ユースケース）
+│   │   ├── cli/                 #   フラグ解析・--config のマージ
+│   │   │   └── cli.go
+│   │   └── web/                 #   ローカルWeb GUI（--gui）
+│   │       ├── server.go        #     管理画面サーバ・ルーティング・トークン保護
+│   │       ├── controller.go    #     プロキシの開始/停止と状態管理
+│   │       ├── config.go        #     設定の永続化（config.json）
+│   │       ├── logsink.go       #     画面表示用のログバッファ
+│   │       ├── netinfo.go       #     LAN IP / ポートの案内情報
+│   │       └── static/index.html #    管理画面のフロントエンド（embed）
 │   └── infra/                   # フレームワーク／ドライバ（具体実装）
 │       ├── ca/                  #   crypto/x509 + ファイルシステムによるCA実装
 │       │   └── ca.go
 │       └── proxy/               #   goproxy によるプロキシ実装
-│           └── goproxy.go
+│           ├── goproxy.go
+│           └── ca_portal.html   #   CA配布ポータルのページ（embed）
+├── docs/                        # マニュアルサイト（Astro Starlight）
+├── .github/workflows/           # CI・リリース・Docsデプロイ
+├── .goreleaser.yml              # マルチプラットフォームビルド・Homebrew配布
+├── cliff.toml                   # CHANGELOG生成（git-cliff）設定
+├── CHANGELOG.md
 ├── go.mod
 ├── go.sum
 ├── LICENSE
@@ -404,4 +420,4 @@ go build -ldflags "-X main.version=v1.0.0" -o jheader-proxy ./cmd/jheader-proxy
 └── .gitignore
 ```
 
-依存の向き: `infra` / `adapter` → `usecase` → `domain`。`usecase` がポート（interface）を定義し、`infra` がそれを実装します。`cmd/jheader-proxy/main.go` が両者を結線します。
+依存の向き: `infra` / `adapter` → `usecase` → `domain`。`usecase` がポート（interface）を定義し、`infra` がそれを実装します。`config` は設定スキーマと変換を提供し、CLI（`adapter/cli`）と GUI（`adapter/web`）の両方が同一の `config.ToRunProxyInput` を通してユースケース入力へ変換します。`cmd/jheader-proxy/main.go` が全体を結線します。
