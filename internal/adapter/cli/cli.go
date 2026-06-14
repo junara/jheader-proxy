@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/junara/jheader-proxy/internal/config"
 	"github.com/junara/jheader-proxy/internal/domain"
 	"github.com/junara/jheader-proxy/internal/usecase"
 )
@@ -52,6 +53,69 @@ func (s *stringList) Set(value string) error {
 	return nil
 }
 
+// runFlags は run / gen-ca モードに関わるフラグ値をまとめる。--config のマージ対象。
+type runFlags struct {
+	listen   string
+	domains  stringList
+	headers  stringList
+	allow    stringList
+	caCert   string
+	caKey    string
+	duration time.Duration
+	quiet    bool
+	verbose  bool
+	redact   bool
+}
+
+// applyConfig は path の設定ファイルを読み込み、コマンドラインで明示されなかった
+// 項目にだけその値を反映する(精度: フラグ明示指定 > 設定ファイル > 既定値)。
+// --domain/--header/--allow は1つでも指定されていれば設定ファイルのリストを
+// 置き換える(マージはしない)。
+func (r *runFlags) applyConfig(path string, fs *flag.FlagSet) error {
+	fc, err := config.Load(path)
+	if err != nil {
+		return err
+	}
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+
+	if !set["listen"] {
+		r.listen = fc.Listen
+	}
+	if !set["domain"] {
+		r.domains = fc.Domains
+	}
+	if !set["header"] {
+		r.headers = config.HeadersToSpecs(fc.Headers)
+	}
+	if !set["allow"] {
+		r.allow = fc.Allow
+	}
+	if !set["ca-cert"] {
+		r.caCert = fc.CACertPath
+	}
+	if !set["ca-key"] {
+		r.caKey = fc.CAKeyPath
+	}
+	if !set["duration"] {
+		d, err := config.ParseDuration(fc.Duration)
+		if err != nil {
+			return err
+		}
+		r.duration = d
+	}
+	if !set["quiet"] {
+		r.quiet = fc.Quiet
+	}
+	if !set["verbose"] {
+		r.verbose = fc.Verbose
+	}
+	if !set["redact"] {
+		r.redact = fc.Redact
+	}
+	return nil
+}
+
 // Parse は args を Command に解析する。フラグエラー(-h を含む)は、使用方法を
 // output に書き出した上でそのまま返す。
 func Parse(name string, args []string, output io.Writer) (*Command, error) {
@@ -59,35 +123,29 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 	fs.SetOutput(output)
 
 	var (
-		listen      string
-		domains     stringList
-		headers     stringList
-		allow       stringList
-		caCert      string
-		caKey       string
-		duration    time.Duration
+		rf          runFlags
 		genCA       bool
 		force       bool
-		quiet       bool
-		verbose     bool
-		redact      bool
 		showVersion bool
 		gui         bool
 		guiListen   string
 		noOpen      bool
+		configPath  string
 	)
-	fs.StringVar(&listen, "listen", ":8080", "proxy listen address (e.g. :8080)")
-	fs.Var(&domains, "domain", "target domain (repeatable; subdomains are included)")
-	fs.Var(&headers, "header", `header to add in "Name=Value" form (repeatable)`)
-	fs.Var(&allow, "allow", "allowed client IP or CIDR (repeatable; default allows all)")
-	fs.StringVar(&caCert, "ca-cert", "", "path to the CA certificate PEM used for HTTPS MITM (required)")
-	fs.StringVar(&caKey, "ca-key", "", "path to the CA private key PEM used for HTTPS MITM (required)")
-	fs.DurationVar(&duration, "duration", 10*time.Minute, "auto-stop after this duration (0 to disable)")
+	fs.StringVar(&configPath, "config", "",
+		"path to a JSON config file (GUI's config.json is compatible); command-line flags override its values")
+	fs.StringVar(&rf.listen, "listen", ":8080", "proxy listen address (e.g. :8080)")
+	fs.Var(&rf.domains, "domain", "target domain (repeatable; subdomains are included)")
+	fs.Var(&rf.headers, "header", `header to add in "Name=Value" form (repeatable)`)
+	fs.Var(&rf.allow, "allow", "allowed client IP or CIDR (repeatable; default allows all)")
+	fs.StringVar(&rf.caCert, "ca-cert", "", "path to the CA certificate PEM used for HTTPS MITM (required)")
+	fs.StringVar(&rf.caKey, "ca-key", "", "path to the CA private key PEM used for HTTPS MITM (required)")
+	fs.DurationVar(&rf.duration, "duration", 10*time.Minute, "auto-stop after this duration (0 to disable)")
 	fs.BoolVar(&genCA, "gen-ca", false, "generate a new CA at --ca-cert/--ca-key and exit")
 	fs.BoolVar(&force, "force", false, "with --gen-ca, overwrite existing files")
-	fs.BoolVar(&quiet, "quiet", false, "suppress per-request logs")
-	fs.BoolVar(&verbose, "verbose", false, "also log responses for target domains")
-	fs.BoolVar(&redact, "redact", false, "mask all header values in the startup log")
+	fs.BoolVar(&rf.quiet, "quiet", false, "suppress per-request logs")
+	fs.BoolVar(&rf.verbose, "verbose", false, "also log responses for target domains")
+	fs.BoolVar(&rf.redact, "redact", false, "mask all header values in the startup log")
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 	fs.BoolVar(&gui, "gui", false, "launch the local web GUI to configure and control the proxy")
 	fs.StringVar(&guiListen, "gui-listen", "127.0.0.1:9090", "with --gui, the management UI listen address")
@@ -100,6 +158,13 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 	if showVersion {
 		return &Command{Mode: ModeVersion}, nil
 	}
+
+	// --config 指定時は、コマンドラインで明示しなかった項目だけ設定ファイルの値で埋める。
+	if configPath != "" {
+		if err := rf.applyConfig(configPath, fs); err != nil {
+			return nil, err
+		}
+	}
 	if gui {
 		return &Command{
 			Mode: ModeGUI,
@@ -109,27 +174,27 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 	if genCA {
 		return &Command{
 			Mode:  ModeGenCA,
-			GenCA: usecase.GenerateCAInput{CertPath: caCert, KeyPath: caKey, Force: force},
+			GenCA: usecase.GenerateCAInput{CertPath: rf.caCert, KeyPath: rf.caKey, Force: force},
 		}, nil
 	}
 
-	parsedHeaders, err := domain.ParseHeaders(headers)
+	parsedHeaders, err := domain.ParseHeaders(rf.headers)
 	if err != nil {
 		return nil, err
 	}
 	return &Command{
 		Mode:    ModeRun,
-		Quiet:   quiet,
-		Verbose: verbose,
+		Quiet:   rf.quiet,
+		Verbose: rf.verbose,
 		Run: usecase.RunProxyInput{
-			Listen:       listen,
-			Domains:      domains,
+			Listen:       rf.listen,
+			Domains:      rf.domains,
 			Headers:      parsedHeaders,
-			CACertPath:   caCert,
-			CAKeyPath:    caKey,
-			Allow:        allow,
-			RedactValues: redact,
-			Duration:     duration,
+			CACertPath:   rf.caCert,
+			CAKeyPath:    rf.caKey,
+			Allow:        rf.allow,
+			RedactValues: rf.redact,
+			Duration:     rf.duration,
 		},
 	}, nil
 }

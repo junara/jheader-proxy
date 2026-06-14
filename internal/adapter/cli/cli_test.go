@@ -2,9 +2,106 @@ package cli
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
+
+// writeConfig はテスト用の一時設定ファイルを書き出してパスを返す。
+func writeConfig(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	return path
+}
+
+func TestParseConfigFile(t *testing.T) {
+	path := writeConfig(t, `{
+		"listen": ":7000",
+		"domains": ["example.test", "example.dev"],
+		"headers": [{"name": "X-Debug-User", "value": "jun"}],
+		"allow": ["192.168.1.5"],
+		"duration": "30s",
+		"quiet": true,
+		"verbose": true,
+		"redact": true,
+		"caCertPath": "cert.pem",
+		"caKeyPath": "key.pem"
+	}`)
+
+	cmd, err := Parse("jheader-proxy", []string{"--config", path}, io.Discard)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if cmd.Mode != ModeRun {
+		t.Fatalf("Mode = %v, want ModeRun", cmd.Mode)
+	}
+	if cmd.Run.Listen != ":7000" {
+		t.Errorf("Listen = %q, want :7000", cmd.Run.Listen)
+	}
+	if len(cmd.Run.Domains) != 2 {
+		t.Errorf("Domains = %v, want 2 entries", cmd.Run.Domains)
+	}
+	if cmd.Run.Headers.Len() != 1 {
+		t.Errorf("Headers.Len() = %d, want 1", cmd.Run.Headers.Len())
+	}
+	if cmd.Run.Duration != 30*time.Second {
+		t.Errorf("Duration = %s, want 30s", cmd.Run.Duration)
+	}
+	if !cmd.Quiet || !cmd.Verbose || !cmd.Run.RedactValues {
+		t.Errorf("Quiet=%v Verbose=%v Redact=%v, want all true", cmd.Quiet, cmd.Verbose, cmd.Run.RedactValues)
+	}
+	if cmd.Run.CACertPath != "cert.pem" || cmd.Run.CAKeyPath != "key.pem" {
+		t.Errorf("CA paths = (%q, %q), want (cert.pem, key.pem)", cmd.Run.CACertPath, cmd.Run.CAKeyPath)
+	}
+}
+
+func TestParseConfigFlagsOverride(t *testing.T) {
+	path := writeConfig(t, `{
+		"listen": ":7000",
+		"domains": ["from-file.test"],
+		"headers": [{"name": "X-From-File", "value": "1"}],
+		"duration": "30s",
+		"caCertPath": "file-cert.pem",
+		"caKeyPath": "file-key.pem"
+	}`)
+
+	// listen と domain と header はコマンドラインで上書きする。
+	cmd, err := Parse("jheader-proxy", []string{
+		"--config", path,
+		"--listen", ":9999",
+		"--domain", "from-flag.test",
+		"--header", "X-From-Flag=2",
+	}, io.Discard)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if cmd.Run.Listen != ":9999" {
+		t.Errorf("Listen = %q, want :9999 (flag overrides file)", cmd.Run.Listen)
+	}
+	if len(cmd.Run.Domains) != 1 || cmd.Run.Domains[0] != "from-flag.test" {
+		t.Errorf("Domains = %v, want [from-flag.test] (flag replaces file list)", cmd.Run.Domains)
+	}
+	// 上書きしなかった項目はファイルの値が残る。
+	if cmd.Run.Duration != 30*time.Second {
+		t.Errorf("Duration = %s, want 30s (from file)", cmd.Run.Duration)
+	}
+	if cmd.Run.CACertPath != "file-cert.pem" {
+		t.Errorf("CACertPath = %q, want file-cert.pem (from file)", cmd.Run.CACertPath)
+	}
+}
+
+func TestParseConfigMissingFile(t *testing.T) {
+	_, err := Parse("jheader-proxy", []string{
+		"--config", filepath.Join(t.TempDir(), "does-not-exist.json"),
+	}, io.Discard)
+	if err == nil {
+		t.Error("Parse with missing --config file returned nil error, want error")
+	}
+}
 
 func TestParseRunMode(t *testing.T) {
 	cmd, err := Parse("jheader-proxy", []string{

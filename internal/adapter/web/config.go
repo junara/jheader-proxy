@@ -6,31 +6,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/junara/jheader-proxy/internal/config"
 )
 
 // appDirName は設定・CA を置くアプリ専用サブディレクトリ名。
 // macOS では ~/Library/Application Support/jheader-proxy に解決される。
 const appDirName = "jheader-proxy"
 
-// HeaderKV はフォームから受け取るヘッダー1件(Name/Value)。
-type HeaderKV struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-// RunConfig は GUI フォームの値一式。直近設定として JSON 永続化される。
-type RunConfig struct {
-	Listen     string     `json:"listen"`
-	Domains    []string   `json:"domains"`
-	Headers    []HeaderKV `json:"headers"`
-	Allow      []string   `json:"allow"`
-	Duration   string     `json:"duration"` // Go の duration 文字列(例 "10m")。"" / "0" で無制限。
-	Quiet      bool       `json:"quiet"`
-	Verbose    bool       `json:"verbose"`
-	Redact     bool       `json:"redact"`
-	CACertPath string     `json:"caCertPath"`
-	CAKeyPath  string     `json:"caKeyPath"`
-}
+// 設定スキーマは CLI(--config)と共有する(internal/config)。GUI が保存する
+// config.json をそのまま CLI の --config で読み込めるよう、同一型を別名で公開する。
+type (
+	// HeaderKV は付与するヘッダー1件(Name/Value)。
+	HeaderKV = config.HeaderKV
+	// RunConfig は GUI フォームの値一式。直近設定として JSON 永続化される。
+	RunConfig = config.RunConfig
+)
 
 // ConfigDir はアプリ専用ディレクトリのパスを返す(未作成でも返す)。
 func ConfigDir() (string, error) {
@@ -41,12 +32,9 @@ func ConfigDir() (string, error) {
 	return filepath.Join(base, appDirName), nil
 }
 
-// DefaultRunConfig は CA の既定パスを埋めた初期設定を返す。
+// DefaultRunConfig は共通の既定値に、CA の既定パス(アプリ固有)を加えて返す。
 func DefaultRunConfig() RunConfig {
-	cfg := RunConfig{
-		Listen:   ":8080",
-		Duration: "10m",
-	}
+	cfg := config.Default()
 	if dir, err := ConfigDir(); err == nil {
 		cfg.CACertPath = filepath.Join(dir, "ca-cert.pem")
 		cfg.CAKeyPath = filepath.Join(dir, "ca-key.pem")

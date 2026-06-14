@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/junara/jheader-proxy/internal/config"
 	"github.com/junara/jheader-proxy/internal/domain"
 	"github.com/junara/jheader-proxy/internal/usecase"
 )
@@ -171,24 +172,14 @@ func (c *Controller) State() StateView {
 // buildInput は RunConfig を usecase 入力へ変換する。CLI と同じく
 // domain.ParseHeaders を再利用し、duration 文字列を解釈する。
 func buildInput(cfg RunConfig) (usecase.RunProxyInput, time.Duration, error) {
-	headerStrs := make([]string, 0, len(cfg.Headers))
-	for _, h := range cfg.Headers {
-		if strings.TrimSpace(h.Name) == "" {
-			continue
-		}
-		headerStrs = append(headerStrs, strings.TrimSpace(h.Name)+"="+h.Value)
-	}
-	headers, err := domain.ParseHeaders(headerStrs)
+	headers, err := domain.ParseHeaders(config.HeadersToSpecs(cfg.Headers))
 	if err != nil {
 		return usecase.RunProxyInput{}, 0, err
 	}
 
-	var dur time.Duration
-	if s := strings.TrimSpace(cfg.Duration); s != "" {
-		dur, err = time.ParseDuration(s)
-		if err != nil {
-			return usecase.RunProxyInput{}, 0, fmt.Errorf("invalid duration %q: %w", s, err)
-		}
+	dur, err := config.ParseDuration(cfg.Duration)
+	if err != nil {
+		return usecase.RunProxyInput{}, 0, err
 	}
 
 	return usecase.RunProxyInput{
