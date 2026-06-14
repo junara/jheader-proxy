@@ -20,6 +20,8 @@ type RunProxyInput struct {
 	RedactValues bool
 	// Duration は自動停止までの時間。0 以下なら無制限。
 	Duration time.Duration
+	// OnReady は待受開始に成功した直後に一度だけ呼ばれる(任意)。
+	OnReady func()
 }
 
 // RunProxy はCAを読み込み、ヘッダーを付与するプロキシを起動する。
@@ -87,5 +89,6 @@ func (u *RunProxy) Execute(ctx context.Context, in RunProxyInput) error {
 		Headers: in.Headers,
 		CA:      cert,
 		Allow:   allow,
+		OnReady: in.OnReady,
 	})
 }

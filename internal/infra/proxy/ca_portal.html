@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jheader-proxy CA</title>
+<style>
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    max-width:480px; margin:40px auto; padding:0 20px; line-height:1.7; color:#1c2330;
+  }
+  h1 { font-size:18px; }
+  a.btn {
+    display:inline-block; background:#2f6feb; color:#fff;
+    padding:12px 20px; border-radius:8px; text-decoration:none; font-weight:600; margin:12px 0;
+  }
+  .note { font-size:13px; color:#6b7686; }
+</style>
+</head>
+<body>
+<h1>jheader-proxy CA 証明書</h1>
+<p>この証明書をインストールすると、対象ドメインの HTTPS 通信にヘッダーを付与できます。</p>
+<p><a class="btn" href="/cert.crt">CA 証明書をダウンロード</a></p>
+<p class="note">
+iPhone: ダウンロード後、設定 → プロファイルがダウンロードされました → インストール。
+さらに「設定 → 一般 → 情報 → 証明書信頼設定」で対象を ON にしてください。<br><br>
+Android: 設定 → セキュリティ → 暗号化と認証情報 → 証明書をインストール →
+「CA証明書」を選択してください(「ユーザー証明書」ではありません)。
+</p>
+</body>
+</html>

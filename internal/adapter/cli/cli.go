@@ -22,13 +22,22 @@ const (
 	ModeGenCA
 	// ModeVersion はバージョンを表示して終了する。
 	ModeVersion
+	// ModeGUI はローカル Web 管理画面を起動する。
+	ModeGUI
 )
+
+// GUIOptions は GUI モードの起動オプション。
+type GUIOptions struct {
+	Listen string // 管理画面の待受アドレス
+	NoOpen bool   // ブラウザを自動起動しない
+}
 
 // Command はコマンドラインから解析された意図を表す。
 type Command struct {
 	Mode    Mode
 	Run     usecase.RunProxyInput
 	GenCA   usecase.GenerateCAInput
+	GUI     GUIOptions
 	Quiet   bool
 	Verbose bool
 }
@@ -63,6 +72,9 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 		verbose     bool
 		redact      bool
 		showVersion bool
+		gui         bool
+		guiListen   string
+		noOpen      bool
 	)
 	fs.StringVar(&listen, "listen", ":8080", "proxy listen address (e.g. :8080)")
 	fs.Var(&domains, "domain", "target domain (repeatable; subdomains are included)")
@@ -77,6 +89,9 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 	fs.BoolVar(&verbose, "verbose", false, "also log responses for target domains")
 	fs.BoolVar(&redact, "redact", false, "mask all header values in the startup log")
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
+	fs.BoolVar(&gui, "gui", false, "launch the local web GUI to configure and control the proxy")
+	fs.StringVar(&guiListen, "gui-listen", "127.0.0.1:9090", "with --gui, the management UI listen address")
+	fs.BoolVar(&noOpen, "no-open", false, "with --gui, do not open the browser automatically")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -84,6 +99,12 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 
 	if showVersion {
 		return &Command{Mode: ModeVersion}, nil
+	}
+	if gui {
+		return &Command{
+			Mode: ModeGUI,
+			GUI:  GUIOptions{Listen: guiListen, NoOpen: noOpen},
+		}, nil
 	}
 	if genCA {
 		return &Command{

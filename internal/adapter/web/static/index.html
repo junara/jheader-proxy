@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jheader-proxy GUI</title>
+<style>
+  :root { --fg:#1c2330; --muted:#6b7686; --bd:#d8dee9; --bg:#f5f7fa; --accent:#2f6feb; --ok:#1f9d55; --err:#d23f3f; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--fg); background:var(--bg); }
+  header { position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--bd); padding:14px 20px; display:flex; align-items:baseline; gap:12px; }
+  header h1 { font-size:16px; margin:0; }
+  .badge { font-size:12px; padding:3px 10px; border-radius:999px; font-weight:600; }
+  .badge.stopped { background:#eceff4; color:var(--muted); }
+  .badge.running { background:#e3f3e9; color:var(--ok); }
+  main { max-width:880px; margin:0 auto; padding:20px; display:grid; gap:18px; }
+  .card { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:16px 18px; }
+  .card h2 { font-size:14px; margin:0 0 12px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  input[type=text] { width:100%; padding:7px 9px; border:1px solid var(--bd); border-radius:6px; font-size:13px; }
+  input.invalid { border-color:var(--err); background:#fff7f7; }
+  .row { display:flex; gap:8px; margin-bottom:6px; }
+  .row input { flex:1; }
+  .row button { flex:0 0 auto; }
+  .checks { display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; font-size:13px; }
+  .checks label { display:flex; align-items:center; gap:6px; margin:0; color:var(--fg); }
+  button { font-size:13px; padding:7px 14px; border:1px solid var(--bd); background:#fff; border-radius:6px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger { background:var(--err); border-color:var(--err); color:#fff; }
+  button.small { padding:4px 9px; font-size:12px; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .actions { display:flex; gap:10px; margin-top:14px; align-items:center; }
+  .msg { font-size:13px; padding:8px 10px; border-radius:6px; display:none; }
+  .msg.err { background:#fdecec; color:var(--err); display:block; }
+  .msg.ok { background:#e8f5ee; color:var(--ok); display:block; }
+  .msg ul { margin:6px 0 0; padding-left:20px; }
+  .msg li { margin:2px 0; }
+  .hint { font-size:12px; color:var(--muted); margin-top:4px; }
+  .hint code { font-family:ui-monospace,Menlo,monospace; background:#eceff4; padding:1px 5px; border-radius:4px; }
+  .conn { font-size:13px; line-height:1.7; }
+  .conn b { font-family:ui-monospace,Menlo,monospace; }
+  pre#logs { background:#0f1622; color:#d7e0ee; border-radius:8px; padding:12px; height:300px; overflow:auto; font-size:12px; line-height:1.5; margin:0; white-space:pre-wrap; word-break:break-all; }
+  .header-links { margin-left:auto; display:flex; align-items:baseline; gap:16px; font-size:13px; }
+  .header-links a { color:var(--accent); text-decoration:none; }
+  .header-links a:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>jheader-proxy</h1>
+  <span id="badge" class="badge stopped">停止中</span>
+  <span id="remaining" class="hint"></span>
+  <nav class="header-links">
+    <a href="https://junara.github.io/jheader-proxy/" target="_blank" rel="noopener noreferrer">ドキュメント</a>
+    <a href="https://github.com/junara/jheader-proxy" target="_blank" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <div id="msg" class="msg"></div>
+
+  <section class="card">
+    <h2>プロキシ設定</h2>
+    <label>待受アドレス (プロキシ本体ポート)</label>
+    <input type="text" id="listen" placeholder=":8080">
+    <p class="hint">iPhone の Wi-Fi プロキシが接続するポート。任意に変更可。</p>
+
+    <label>対象ドメイン (サブドメイン含む)</label>
+    <div id="domains"></div>
+    <button class="small" type="button" onclick="addDomain()">+ ドメイン追加</button>
+    <p class="hint">例: <code>example.test</code> (<code>app.example.test</code> などサブドメインも対象)</p>
+
+    <label>付与ヘッダー</label>
+    <div id="headers"></div>
+    <button class="small" type="button" onclick="addHeader()">+ ヘッダー追加</button>
+
+    <label>許可クライアント IP / CIDR (空なら全許可)</label>
+    <div id="allow"></div>
+    <button class="small" type="button" onclick="addAllow()">+ 許可先追加</button>
+
+    <label>自動停止 (Go duration 形式。0 で無制限)</label>
+    <input type="text" id="duration" placeholder="10m">
+
+    <div class="checks">
+      <label><input type="checkbox" id="quiet"> リクエストログ抑制 (quiet)</label>
+      <label><input type="checkbox" id="verbose"> レスポンスもログ (verbose)</label>
+      <label><input type="checkbox" id="redact"> ヘッダー値をマスク (redact)</label>
+    </div>
+
+    <div class="actions">
+      <button id="startBtn" class="primary" type="button" onclick="start()">開始</button>
+      <button id="stopBtn" class="danger" type="button" onclick="stop()" disabled>停止</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>CA 証明書</h2>
+    <label>CA 証明書パス (iPhone にインストール)</label>
+    <input type="text" id="caCertPath">
+    <label>CA 秘密鍵パス (共有しないこと)</label>
+    <input type="text" id="caKeyPath">
+    <div class="actions">
+      <button class="small" type="button" onclick="genCA(false)">CA 生成</button>
+      <button class="small" type="button" onclick="genCA(true)">強制再生成</button>
+      <button class="small" type="button" onclick="reveal()">Finder で表示</button>
+    </div>
+    <p class="hint">生成後、証明書を AirDrop 等で iPhone に送り、設定 &gt; プロファイル &gt; 信頼で有効化してください。</p>
+    <p class="hint">モバイル端末からは、本機をプロキシに設定後 <code>http://jheader.proxy</code> を開くと証明書をダウンロードできます。</p>
+  </section>
+
+  <section class="card">
+    <h2>iPhone 接続情報</h2>
+    <p class="conn" id="conn">—</p>
+  </section>
+
+  <section class="card">
+    <h2>ログ</h2>
+    <pre id="logs"></pre>
+  </section>
+</main>
+
+<script>
+const TOKEN = "__JHEADER_TOKEN__";
+let formInitialized = false;
+
+function $(id){ return document.getElementById(id); }
+function val(id){ return $(id).value.trim(); }
+function checked(id){ return $(id).checked; }
+
+async function api(path, opts={}){
+  const headers = Object.assign({ "X-Jheader-Token": TOKEN }, opts.headers||{});
+  if (opts.body) headers["Content-Type"] = "application/json";
+  const res = await fetch(path, Object.assign({}, opts, { headers }));
+  const data = await res.json().catch(()=> ({}));
+  if (!res.ok) throw new Error(data.error || ("HTTP "+res.status));
+  return data;
+}
+
+function showMsg(text, kind){
+  const m = $("msg");
+  m.textContent = text;
+  m.className = "msg " + kind;
+  if (kind === "ok") setTimeout(()=>{ m.className="msg"; }, 4000);
+}
+
+/* --- 動的な行 --- */
+function listRow(value, placeholder){
+  const div = document.createElement("div");
+  div.className = "row";
+  const inp = document.createElement("input");
+  inp.type = "text"; inp.value = value || "";
+  if (placeholder) inp.placeholder = placeholder;
+  const btn = document.createElement("button");
+  btn.type = "button"; btn.className = "small"; btn.textContent = "×";
+  btn.onclick = ()=> div.remove();
+  div.append(inp, btn);
+  return div;
+}
+function addDomain(v){ $("domains").append(listRow(v, "example.test")); }
+function addAllow(v){ $("allow").append(listRow(v, "192.168.1.10 または 10.0.0.0/24")); }
+function addHeader(name, value){
+  const div = document.createElement("div");
+  div.className = "row";
+  const n = document.createElement("input"); n.type="text"; n.placeholder="Name"; n.value=name||"";
+  const v = document.createElement("input"); v.type="text"; v.placeholder="Value"; v.value=value||"";
+  const btn = document.createElement("button"); btn.type="button"; btn.className="small"; btn.textContent="×";
+  btn.onclick = ()=> div.remove();
+  div.append(n, v, btn);
+  $("headers").append(div);
+}
+
+function collectList(id){
+  return [...$(id).querySelectorAll("input")].map(i=>i.value.trim()).filter(Boolean);
+}
+function collectHeaders(){
+  const out = [];
+  for (const row of $("headers").querySelectorAll(".row")){
+    const ins = row.querySelectorAll("input");
+    const name = ins[0].value.trim();
+    if (name) out.push({ name, value: ins[1].value });
+  }
+  return out;
+}
+
+function gatherConfig(){
+  return {
+    listen: val("listen"),
+    domains: collectList("domains"),
+    headers: collectHeaders(),
+    allow: collectList("allow"),
+    duration: val("duration"),
+    quiet: checked("quiet"),
+    verbose: checked("verbose"),
+    redact: checked("redact"),
+    caCertPath: val("caCertPath"),
+    caKeyPath: val("caKeyPath"),
+  };
+}
+
+function fillForm(c){
+  $("listen").value = c.listen || "";
+  $("duration").value = c.duration || "";
+  $("quiet").checked = !!c.quiet;
+  $("verbose").checked = !!c.verbose;
+  $("redact").checked = !!c.redact;
+  $("caCertPath").value = c.caCertPath || "";
+  $("caKeyPath").value = c.caKeyPath || "";
+  $("domains").innerHTML = "";
+  (c.domains && c.domains.length ? c.domains : [""]).forEach(addDomain);
+  $("allow").innerHTML = ""; (c.allow && c.allow.length ? c.allow : [""]).forEach(addAllow);
+  $("headers").innerHTML = "";
+  if (c.headers && c.headers.length) c.headers.forEach(h=>addHeader(h.name, h.value));
+  else addHeader();
+}
+
+function renderState(st){
+  const running = st.running;
+  $("badge").textContent = running ? "稼働中" : "停止中";
+  $("badge").className = "badge " + (running ? "running" : "stopped");
+  $("startBtn").disabled = running;
+  $("stopBtn").disabled = !running;
+  $("remaining").textContent = (running && st.remainingSeconds >= 0)
+    ? "残り " + fmtSec(st.remainingSeconds) : (running ? "無制限" : "");
+
+  // 接続情報
+  const port = (st.config.listen || ":8080").split(":").pop();
+  const ip = st.lanIp || "(LAN IP 取得不可)";
+  $("conn").innerHTML = "iPhone の Wi-Fi プロキシ設定:<br>サーバ: <b>"+ip+"</b> / ポート: <b>"+port+"</b>";
+
+  if (st.lastError && !running) showMsg("前回の終了理由: " + st.lastError, "err");
+}
+
+function fmtSec(s){
+  const m = Math.floor(s/60), sec = s%60;
+  return m>0 ? (m+"分"+sec+"秒") : (sec+"秒");
+}
+
+async function refresh(){
+  try {
+    const st = await api("/api/state");
+    if (!formInitialized){ fillForm(st.config); formInitialized = true; }
+    renderState(st);
+  } catch(e){ /* ポーリング失敗は無視 */ }
+}
+
+/* --- バリデーション --- */
+const HEADER_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/; // RFC 7230 token
+const DOMAIN_RE = /^[A-Za-z0-9.-]+$/;
+const DURATION_RE = /^(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))+$/; // Go duration
+
+function clearInvalid(){ document.querySelectorAll("input.invalid").forEach(i=>i.classList.remove("invalid")); }
+function mark(el){ if (el) el.classList.add("invalid"); }
+
+function validListen(v){
+  const m = v.match(/^(.*):(\d{1,5})$/);
+  if (!m) return false;
+  const port = Number(m[2]);
+  return port >= 1 && port <= 65535;
+}
+function validIPv4(v){
+  const p = v.split(".");
+  return p.length === 4 && p.every(o => /^\d{1,3}$/.test(o) && Number(o) <= 255);
+}
+function validIPOrCIDR(v){
+  const parts = v.split("/");
+  if (parts.length > 2) return false;
+  const ip = parts[0];
+  const isV4 = validIPv4(ip);
+  const isV6 = /^[0-9a-fA-F:]+$/.test(ip) && ip.includes(":");
+  if (!isV4 && !isV6) return false;
+  if (parts.length === 2){
+    const bits = Number(parts[1]);
+    const maxBits = isV4 ? 32 : 128;
+    if (!Number.isInteger(bits) || bits < 0 || bits > maxBits) return false;
+  }
+  return true;
+}
+
+function validate(cfg){
+  clearInvalid();
+  const errs = [];
+
+  if (!validListen(cfg.listen)){
+    mark($("listen"));
+    errs.push("待受アドレスは host:port 形式で指定してください (例 :8080。ポートは 1-65535)。");
+  }
+
+  if (cfg.domains.length === 0){
+    mark($("domains").querySelector("input"));
+    errs.push("対象ドメインを1つ以上指定してください。");
+  } else {
+    for (const i of $("domains").querySelectorAll("input")){
+      const v = i.value.trim();
+      if (v && !DOMAIN_RE.test(v)){ mark(i); errs.push('ドメイン "' + v + '" が不正です (使用可: 英数字 . -)。'); }
+    }
+  }
+
+  if (cfg.headers.length === 0){
+    mark($("headers").querySelector("input"));
+    errs.push("付与ヘッダーを1つ以上 (名前必須) 指定してください。");
+  } else {
+    for (const row of $("headers").querySelectorAll(".row")){
+      const nameInput = row.querySelectorAll("input")[0];
+      const v = nameInput.value.trim();
+      if (v && !HEADER_NAME_RE.test(v)){ mark(nameInput); errs.push('ヘッダー名 "' + v + '" が不正です (HTTP トークン文字のみ)。'); }
+    }
+  }
+
+  for (const i of $("allow").querySelectorAll("input")){
+    const v = i.value.trim();
+    if (v && !validIPOrCIDR(v)){ mark(i); errs.push('許可先 "' + v + '" は IP または CIDR ではありません。'); }
+  }
+
+  if (cfg.duration && cfg.duration !== "0" && !DURATION_RE.test(cfg.duration)){
+    mark($("duration"));
+    errs.push("自動停止は Go duration 形式で指定してください (例 10m, 1h30m。0 で無制限)。");
+  }
+
+  if (!cfg.caCertPath){ mark($("caCertPath")); errs.push("CA 証明書パスを指定してください。"); }
+  if (!cfg.caKeyPath){ mark($("caKeyPath")); errs.push("CA 秘密鍵パスを指定してください。"); }
+
+  return errs;
+}
+
+function showErrors(errs){
+  const m = $("msg");
+  m.className = "msg err";
+  m.textContent = "";
+  const b = document.createElement("b");
+  b.textContent = "入力を確認してください:";
+  const ul = document.createElement("ul");
+  for (const e of errs){ const li = document.createElement("li"); li.textContent = e; ul.append(li); }
+  m.append(b, ul);
+  m.scrollIntoView({ block: "nearest" });
+}
+
+async function start(){
+  const cfg = gatherConfig();
+  const errs = validate(cfg);
+  if (errs.length){ showErrors(errs); return; }
+  try {
+    const st = await api("/api/start", { method:"POST", body: JSON.stringify(cfg) });
+    renderState(st);
+    showMsg("プロキシを起動しました。", "ok");
+  } catch(e){ showMsg("起動失敗: " + e.message, "err"); }
+}
+async function stop(){
+  try {
+    const st = await api("/api/stop", { method:"POST" });
+    renderState(st);
+    showMsg("停止しました。", "ok");
+  } catch(e){ showMsg("停止失敗: " + e.message, "err"); }
+}
+async function genCA(force){
+  clearInvalid();
+  const certPath = val("caCertPath"), keyPath = val("caKeyPath");
+  const errs = [];
+  if (!certPath){ mark($("caCertPath")); errs.push("CA 証明書パスを指定してください。"); }
+  if (!keyPath){ mark($("caKeyPath")); errs.push("CA 秘密鍵パスを指定してください。"); }
+  if (errs.length){ showErrors(errs); return; }
+  try {
+    await api("/api/gen-ca", { method:"POST", body: JSON.stringify({ certPath, keyPath, force }) });
+    showMsg("CA を生成しました: " + certPath, "ok");
+  } catch(e){ showMsg("CA 生成失敗: " + e.message, "err"); }
+}
+async function reveal(){
+  try { await api("/api/reveal", { method:"POST", body: JSON.stringify({ path: val("caCertPath") }) }); }
+  catch(e){ showMsg("Finder 表示失敗: " + e.message, "err"); }
+}
+
+function connectLogs(){
+  const es = new EventSource("/api/logs?token=" + encodeURIComponent(TOKEN));
+  const box = $("logs");
+  es.onmessage = (ev)=>{
+    const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+    box.textContent += ev.data + "\n";
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  };
+}
+
+// 入力を直したら、その場で赤枠を外す。
+document.addEventListener("input", (e)=>{ if (e.target.classList) e.target.classList.remove("invalid"); });
+
+refresh();
+connectLogs();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>

@@ -3,18 +3,34 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
+	"encoding/pem"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
+	"strings"
 	"time"
+
+	_ "embed"
 
 	"github.com/elazarl/goproxy"
 
 	"github.com/junara/jheader-proxy/internal/domain"
 	"github.com/junara/jheader-proxy/internal/usecase"
 )
+
+// caPortalHost はプロキシ経由で CA 証明書を配布するための特別なホスト名。
+// プロキシを設定した端末で http://jheader.proxy を開くと、証明書をダウンロード
+// できる(mitmproxy の mitm.it と同じ仕組み)。秘密鍵は配信しない。
+const caPortalHost = "jheader.proxy"
+
+// caPortalHTML は CA ポータルの案内ページ。
+//
+//go:embed ca_portal.html
+var caPortalHTML string
 
 // Logger は人間可読の進捗メッセージを受け取る。
 type Logger interface {
@@ -46,6 +62,9 @@ func New(logger Logger, opts Options) *Server {
 func (s *Server) Serve(ctx context.Context, cfg usecase.ProxyConfig) error {
 	proxy := goproxy.NewProxyHttpServer()
 
+	// CA ポータル(http://jheader.proxy)で配布する CA 証明書を PEM 化しておく。
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cfg.CA.Certificate[0]})
+
 	// ロード済みCAから動的にサーバ証明書を発行する TLS 設定。
 	tlsConfig := goproxy.TLSConfigFromCA(cfg.CA)
 	mitm := &goproxy.ConnectAction{Action: goproxy.ConnectMitm, TLSConfig: tlsConfig}
@@ -60,15 +79,8 @@ func (s *Server) Serve(ctx context.Context, cfg usecase.ProxyConfig) error {
 		return tunnel, host
 	})
 
-	proxy.OnRequest().DoFunc(func(req *http.Request, _ *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		if cfg.Matcher.IsTarget(req.Host) {
-			cfg.Headers.Each(func(name, value string) {
-				req.Header.Set(name, value)
-			})
-			s.requestLogf("[ADD HEADER] %s %s", req.Method, req.URL)
-		}
-		return req, nil
-	})
+	//nolint:bodyclose // 返す *http.Response は goproxy が書き出して閉じる
+	proxy.OnRequest().DoFunc(s.handleRequest(cfg, caPEM))
 
 	if s.opts.Verbose {
 		proxy.OnResponse().DoFunc(func(resp *http.Response, pctx *goproxy.ProxyCtx) *http.Response {
@@ -86,6 +98,11 @@ func (s *Server) Serve(ctx context.Context, cfg usecase.ProxyConfig) error {
 	}
 	if !cfg.Allow.AllowsAll() {
 		listener = &filteredListener{Listener: listener, allow: cfg.Allow, logger: s.logger}
+	}
+
+	// 待受開始に成功した。GUI 等が起動成功を検知できるよう通知する。
+	if cfg.OnReady != nil {
+		cfg.OnReady()
 	}
 
 	srv := &http.Server{
@@ -140,6 +157,69 @@ func (s *Server) requestLogf(format string, args ...any) {
 		return
 	}
 	s.logger.Printf(format, args...)
+}
+
+// handleRequest はプロキシに届いた HTTP リクエストの処理関数を返す。CA ポータル宛なら
+// 証明書を配布し、対象ドメイン宛ならヘッダーを付与する。
+func (s *Server) handleRequest(
+	cfg usecase.ProxyConfig, caPEM []byte,
+) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+	return func(req *http.Request, _ *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+		// CA ポータル: プロキシ経由で CA 証明書を配布する(モバイル端末向け)。
+		if isCAPortalHost(req.Host) {
+			s.requestLogf("[CA PORTAL] %s %s", req.Method, req.URL.Path)
+			return req, caPortalResponse(req, caPEM)
+		}
+		if cfg.Matcher.IsTarget(req.Host) {
+			cfg.Headers.Each(func(name, value string) {
+				req.Header.Set(name, value)
+			})
+			s.requestLogf("[ADD HEADER] %s %s", req.Method, req.URL)
+		}
+		return req, nil
+	}
+}
+
+// isCAPortalHost は要求先が CA ポータルのホストかどうかを返す(ポートは無視)。
+func isCAPortalHost(host string) bool {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return strings.EqualFold(host, caPortalHost)
+}
+
+// caPortalResponse は CA ポータルのレスポンスを返す。/cert 配下は証明書本体を、
+// それ以外は案内ページを返す。
+func caPortalResponse(req *http.Request, caPEM []byte) *http.Response {
+	if strings.HasPrefix(req.URL.Path, "/cert") {
+		// iOS はこの Content-Type でプロファイルのインストールを促す。Android では
+		// ダウンロード後に「CA証明書」としてインストールする。
+		return newProxyResponse(req, http.StatusOK, "application/x-x509-ca-cert", caPEM, map[string]string{
+			"Content-Disposition": `attachment; filename="jheader-proxy-ca.crt"`,
+		})
+	}
+	return newProxyResponse(req, http.StatusOK, "text/html; charset=utf-8", []byte(caPortalHTML), nil)
+}
+
+// newProxyResponse は goproxy が上流へ転送せず返す簡易レスポンスを組み立てる。
+func newProxyResponse(
+	req *http.Request, status int, contentType string, body []byte, extra map[string]string,
+) *http.Response {
+	resp := &http.Response{
+		StatusCode:    status,
+		Proto:         "HTTP/1.1",
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(bytes.NewReader(body)),
+		ContentLength: int64(len(body)),
+		Request:       req,
+	}
+	resp.Header.Set("Content-Type", contentType)
+	for k, v := range extra {
+		resp.Header.Set(k, v)
+	}
+	return resp
 }
 
 // filteredListener は許可リストにないクライアントの接続を受理時に拒否する。

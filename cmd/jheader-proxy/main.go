@@ -18,6 +18,7 @@ import (
 	"syscall"
 
 	"github.com/junara/jheader-proxy/internal/adapter/cli"
+	"github.com/junara/jheader-proxy/internal/adapter/web"
 	"github.com/junara/jheader-proxy/internal/infra/ca"
 	"github.com/junara/jheader-proxy/internal/infra/proxy"
 	"github.com/junara/jheader-proxy/internal/usecase"
@@ -46,7 +47,31 @@ func main() {
 		if err := runProxy(cmd); err != nil {
 			fatal(err)
 		}
+	case cli.ModeGUI:
+		if err := runGUI(cmd); err != nil {
+			fatal(err)
+		}
 	}
+}
+
+func runGUI(cmd *cli.Command) error {
+	// SIGINT / SIGTERM で ctx をキャンセルし、管理画面とプロキシを穏当に停止する。
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	store := ca.New()
+	deps := web.Deps{
+		NewProxyServer: func(logger usecase.Logger, quiet, verbose bool) usecase.ProxyServer {
+			return proxy.New(logger, proxy.Options{Quiet: quiet, Verbose: verbose})
+		},
+		CAProvider:  store,
+		CAGenerator: store,
+	}
+	return web.Serve(ctx, deps, web.Options{
+		Listen:  cmd.GUI.Listen,
+		NoOpen:  cmd.GUI.NoOpen,
+		Version: versionString(),
+	})
 }
 
 func runProxy(cmd *cli.Command) error {

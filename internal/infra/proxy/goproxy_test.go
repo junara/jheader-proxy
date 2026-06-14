@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/pem"
 	"errors"
 	"io"
 	"net"
@@ -10,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,7 +70,7 @@ func freeAddr(t *testing.T) string {
 }
 
 // startProxy はプロキシを起動し、待ち受け開始を待ってアドレスを返す。
-func startProxy(t *testing.T, opts Options, cfg usecase.ProxyConfig) (proxyURL string, stop func()) {
+func startProxy(t *testing.T, cfg usecase.ProxyConfig) (proxyURL string, stop func()) {
 	t.Helper()
 	addr := freeAddr(t)
 	cfg.Listen = addr
@@ -75,7 +78,7 @@ func startProxy(t *testing.T, opts Options, cfg usecase.ProxyConfig) (proxyURL s
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if err := New(nopLogger{}, opts).Serve(ctx, cfg); err != nil {
+		if err := New(nopLogger{}, Options{}).Serve(ctx, cfg); err != nil {
 			t.Errorf("Serve returned error: %v", err)
 		}
 	}()
@@ -106,7 +109,7 @@ func TestServeAddsHeadersToTargetOverHTTP(t *testing.T) {
 	upHost := mustHost(t, upstream.URL)
 
 	headers, _ := domain.ParseHeaders([]string{"X-Debug-User=jun"})
-	proxyURL, stop := startProxy(t, Options{}, usecase.ProxyConfig{
+	proxyURL, stop := startProxy(t, usecase.ProxyConfig{
 		Matcher: domain.NewMatcher([]string{upHost}),
 		Headers: headers,
 		CA:      testCA(t),
@@ -127,7 +130,7 @@ func TestServeDoesNotAddHeadersToNonTarget(t *testing.T) {
 	defer upstream.Close()
 
 	headers, _ := domain.ParseHeaders([]string{"X-Debug-User=jun"})
-	proxyURL, stop := startProxy(t, Options{}, usecase.ProxyConfig{
+	proxyURL, stop := startProxy(t, usecase.ProxyConfig{
 		Matcher: domain.NewMatcher([]string{"other.test"}), // 上流は対象外
 		Headers: headers,
 		CA:      testCA(t),
@@ -149,7 +152,7 @@ func TestServeDeniesDisallowedClient(t *testing.T) {
 	// 127.0.0.1 のクライアントを許可しないリストにする。
 	allow, _ := domain.NewAllowList([]string{"10.0.0.1"})
 	headers, _ := domain.ParseHeaders([]string{"X-Debug-User=jun"})
-	proxyURL, stop := startProxy(t, Options{}, usecase.ProxyConfig{
+	proxyURL, stop := startProxy(t, usecase.ProxyConfig{
 		Matcher: domain.NewMatcher([]string{mustHost(t, upstream.URL)}),
 		Headers: headers,
 		CA:      testCA(t),
@@ -163,6 +166,66 @@ func TestServeDeniesDisallowedClient(t *testing.T) {
 	if err == nil {
 		_ = resp.Body.Close()
 		t.Error("request from disallowed client succeeded, want failure")
+	}
+}
+
+func TestIsCAPortalHost(t *testing.T) {
+	cases := map[string]bool{
+		"jheader.proxy":    true,
+		"jheader.proxy:80": true,
+		"JHEADER.PROXY":    true, // ホスト名は大文字小文字を区別しない
+		"example.test":     false,
+		"":                 false,
+	}
+	for host, want := range cases {
+		if got := isCAPortalHost(host); got != want {
+			t.Errorf("isCAPortalHost(%q) = %v, want %v", host, got, want)
+		}
+	}
+}
+
+func TestServeCAPortal(t *testing.T) {
+	headers, _ := domain.ParseHeaders([]string{"X-Debug-User=jun"})
+	caCert := testCA(t)
+	proxyURL, stop := startProxy(t, usecase.ProxyConfig{
+		Matcher: domain.NewMatcher([]string{"example.test"}),
+		Headers: headers,
+		CA:      caCert,
+	})
+	defer stop()
+
+	client := proxyClient(t, proxyURL)
+
+	// 案内ページ
+	resp, err := client.Get("http://" + caPortalHost + "/")
+	if err != nil {
+		t.Fatalf("portal landing: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("landing status = %d", resp.StatusCode)
+	}
+	if !strings.Contains(string(body), "/cert.crt") {
+		t.Error("landing page missing download link")
+	}
+
+	// 証明書本体
+	certResp, err := client.Get("http://" + caPortalHost + "/cert.crt")
+	if err != nil {
+		t.Fatalf("portal cert: %v", err)
+	}
+	certBody, _ := io.ReadAll(certResp.Body)
+	_ = certResp.Body.Close()
+	if ct := certResp.Header.Get("Content-Type"); ct != "application/x-x509-ca-cert" {
+		t.Errorf("cert content-type = %q, want application/x-x509-ca-cert", ct)
+	}
+	block, _ := pem.Decode(certBody)
+	if block == nil {
+		t.Fatal("served cert is not PEM")
+	}
+	if !bytes.Equal(block.Bytes, caCert.Certificate[0]) {
+		t.Error("served cert does not match the CA")
 	}
 }
 

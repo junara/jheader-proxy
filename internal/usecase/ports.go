@@ -28,6 +28,9 @@ type ProxyConfig struct {
 	Headers domain.Headers
 	CA      *tls.Certificate
 	Allow   domain.AllowList
+	// OnReady は待受開始に成功した直後に一度だけ呼ばれる(任意)。GUI が起動成功と
+	// 起動失敗(ポート衝突など)を区別するために使う。nil の場合は何もしない。
+	OnReady func()
 }
 
 // ProxyServer は cfg に従ってプロキシを実行する。ctx がキャンセルされると
