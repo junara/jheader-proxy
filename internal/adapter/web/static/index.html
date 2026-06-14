@@ -102,7 +102,7 @@
     <div class="actions">
       <button class="small" type="button" onclick="genCA(false)">CA 生成</button>
       <button class="small" type="button" onclick="genCA(true)">強制再生成</button>
-      <button class="small" type="button" onclick="reveal()">Finder で表示</button>
+      <button class="small" type="button" onclick="reveal()">ファイルの場所を開く</button>
     </div>
     <p class="hint">生成後、証明書を AirDrop 等で iPhone に送り、設定 &gt; プロファイル &gt; 信頼で有効化してください。</p>
     <p class="hint">モバイル端末からは、本機をプロキシに設定後 <code>http://jheader.proxy</code> を開くと証明書をダウンロードできます。</p>
@@ -365,7 +365,7 @@ async function genCA(force){
 }
 async function reveal(){
   try { await api("/api/reveal", { method:"POST", body: JSON.stringify({ path: val("caCertPath") }) }); }
-  catch(e){ showMsg("Finder 表示失敗: " + e.message, "err"); }
+  catch(e){ showMsg("ファイルの場所を開けませんでした: " + e.message, "err"); }
 }
 
 function connectLogs(){

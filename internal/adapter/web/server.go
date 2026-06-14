@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -226,15 +227,29 @@ func (s *server) handleReveal(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "path is required")
 		return
 	}
-	// Finder で対象ファイルを選択表示する(macOS)。パスはローカルユーザ自身の入力で、
+	// OS のファイルマネージャでファイルの場所を開く。パスはローカルユーザ自身の入力で、
 	// 引数として直接渡す(シェル経由ではない)。リクエスト終了で kill されないよう
 	// 独立した context で起動する。
-	revealCmd := exec.CommandContext(context.Background(), "open", "-R", req.Path) //nolint:gosec,contextcheck
+	revealCmd := revealCommand(context.Background(), req.Path) //nolint:contextcheck
 	if err := revealCmd.Start(); err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to reveal in Finder: "+err.Error())
+		writeErr(w, http.StatusInternalServerError, "failed to open file location: "+err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// revealCommand はファイルの場所を OS のファイルマネージャで開くコマンドを返す。
+// macOS は Finder で当該ファイルを選択表示、Windows はエクスプローラーで選択表示し、
+// その他(Linux 等)は含まれるフォルダを既定のファイルマネージャ(xdg-open)で開く。
+func revealCommand(ctx context.Context, path string) *exec.Cmd {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.CommandContext(ctx, "open", "-R", path) //nolint:gosec // パスはローカルユーザ入力・シェル非経由
+	case "windows":
+		return exec.CommandContext(ctx, "explorer", "/select,"+path) //nolint:gosec // 同上
+	default:
+		return exec.CommandContext(ctx, "xdg-open", filepath.Dir(path)) //nolint:gosec // フォルダを開く
+	}
 }
 
 func (s *server) handleLogs(w http.ResponseWriter, r *http.Request) {
