@@ -5,38 +5,50 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>jheader-proxy GUI</title>
 <style>
-  :root { --fg:#1c2330; --muted:#6b7686; --bd:#d8dee9; --bg:#f5f7fa; --accent:#2f6feb; --ok:#1f9d55; --err:#d23f3f; }
+  :root {
+    color-scheme: light dark;
+    --fg:#1c2330; --muted:#6b7686; --bd:#d8dee9; --bg:#f5f7fa;
+    --surface:#fff; --surface-2:#eceff4;
+    --accent:#2f6feb; --ok:#1f9d55; --ok-bg:#e3f3e9; --err:#d23f3f; --err-bg:#fdecec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg:#e3e8f0; --muted:#9aa6b8; --bd:#2b3340; --bg:#11161f;
+      --surface:#1a2230; --surface-2:#2a3342;
+      --accent:#5b8cff; --ok:#43c478; --ok-bg:#16331f; --err:#ef6b6b; --err-bg:#3a1d1d;
+    }
+  }
   * { box-sizing: border-box; }
   body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--fg); background:var(--bg); }
-  header { position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--bd); padding:14px 20px; display:flex; align-items:baseline; gap:12px; }
+  header { position:sticky; top:0; z-index:10; background:var(--surface); border-bottom:1px solid var(--bd); padding:14px 20px; display:flex; align-items:baseline; gap:12px; }
   header h1 { font-size:16px; margin:0; }
   .badge { font-size:12px; padding:3px 10px; border-radius:999px; font-weight:600; }
-  .badge.stopped { background:#eceff4; color:var(--muted); }
-  .badge.running { background:#e3f3e9; color:var(--ok); }
+  .badge.stopped { background:var(--surface-2); color:var(--muted); }
+  .badge.running { background:var(--ok-bg); color:var(--ok); }
   main { max-width:880px; margin:0 auto; padding:20px; display:grid; gap:18px; }
-  .card { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:16px 18px; }
+  .card { background:var(--surface); border:1px solid var(--bd); border-radius:10px; padding:16px 18px; }
   .card h2 { font-size:14px; margin:0 0 12px; }
   label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
-  input[type=text] { width:100%; padding:7px 9px; border:1px solid var(--bd); border-radius:6px; font-size:13px; }
-  input.invalid { border-color:var(--err); background:#fff7f7; }
+  input[type=text] { width:100%; padding:7px 9px; border:1px solid var(--bd); border-radius:6px; font-size:13px; background:var(--surface); color:var(--fg); }
+  input.invalid { border-color:var(--err); background:var(--err-bg); }
   .row { display:flex; gap:8px; margin-bottom:6px; }
   .row input { flex:1; }
   .row button { flex:0 0 auto; }
   .checks { display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; font-size:13px; }
   .checks label { display:flex; align-items:center; gap:6px; margin:0; color:var(--fg); }
-  button { font-size:13px; padding:7px 14px; border:1px solid var(--bd); background:#fff; border-radius:6px; cursor:pointer; }
+  button { font-size:13px; padding:7px 14px; border:1px solid var(--bd); background:var(--surface); color:var(--fg); border-radius:6px; cursor:pointer; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   button.danger { background:var(--err); border-color:var(--err); color:#fff; }
   button.small { padding:4px 9px; font-size:12px; }
   button:disabled { opacity:.5; cursor:not-allowed; }
   .actions { display:flex; gap:10px; margin-top:14px; align-items:center; }
   .msg { font-size:13px; padding:8px 10px; border-radius:6px; display:none; }
-  .msg.err { background:#fdecec; color:var(--err); display:block; }
-  .msg.ok { background:#e8f5ee; color:var(--ok); display:block; }
+  .msg.err { background:var(--err-bg); color:var(--err); display:block; }
+  .msg.ok { background:var(--ok-bg); color:var(--ok); display:block; }
   .msg ul { margin:6px 0 0; padding-left:20px; }
   .msg li { margin:2px 0; }
   .hint { font-size:12px; color:var(--muted); margin-top:4px; }
-  .hint code { font-family:ui-monospace,Menlo,monospace; background:#eceff4; padding:1px 5px; border-radius:4px; }
+  .hint code { font-family:ui-monospace,Menlo,monospace; background:var(--surface-2); padding:1px 5px; border-radius:4px; }
   .conn { font-size:13px; line-height:1.7; }
   .conn b { font-family:ui-monospace,Menlo,monospace; }
   pre#logs { background:#0f1622; color:#d7e0ee; border-radius:8px; padding:12px; height:300px; overflow:auto; font-size:12px; line-height:1.5; margin:0; white-space:pre-wrap; word-break:break-all; }
