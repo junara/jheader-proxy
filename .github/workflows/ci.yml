@@ -56,7 +56,7 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           # .golangci.yml は default: all（v2.12 向け）。新リンタ追加で
           # 無関係 PR が落ちないよう、検証済みバージョンに固定する。
