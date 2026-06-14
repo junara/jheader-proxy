@@ -1,0 +1,49 @@
+# Dependabot 設定。依存を週次でチェックし、更新 PR を自動作成する。
+# CI（ci.yml）が各 PR で go test / lint を回すため、緑なら安全にマージできる。
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+
+updates:
+  # Go モジュール（リポジトリ直下）。
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+    open-pull-requests-limit: 5
+    groups:
+      # マイナー・パッチ更新は1つの PR にまとめてノイズを減らす。
+      go-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions のワークフローで使うアクション。
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # ドキュメントサイト（Astro Starlight）の npm 依存。
+  - package-ecosystem: npm
+    directory: "/docs"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+      scope: docs
+    open-pull-requests-limit: 5
+    groups:
+      docs-minor-patch:
+        update-types:
+          - minor
+          - patch
