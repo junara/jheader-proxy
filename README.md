@@ -1,5 +1,7 @@
 # jheader-proxy
 
+[![CI](https://github.com/junara/jheader-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/junara/jheader-proxy/actions/workflows/ci.yml)
+
 macOS上で動作するGo製のローカルHTTP/HTTPSプロキシCLI。
 
 iPhoneのWi-Fiプロキシ設定でこのCLIに通信を通し、指定したドメインへのHTTP/HTTPSリクエストだけに、CLI引数で指定したHTTPヘッダーを追加します。
