@@ -94,6 +94,24 @@ func TestParseConfigFlagsOverride(t *testing.T) {
 	}
 }
 
+func TestParseConfigBlankDomainsTrimmed(t *testing.T) {
+	// 空・空白だけのドメインは入口に依らず落とされ、有効なものだけ残る。
+	path := writeConfig(t, `{
+		"domains": ["", "  ", "  example.test  "],
+		"headers": [{"name": "X-Debug-User", "value": "jun"}],
+		"caCertPath": "cert.pem",
+		"caKeyPath": "key.pem"
+	}`)
+
+	cmd, err := Parse("jheader-proxy", []string{"--config", path}, io.Discard)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if len(cmd.Run.Domains) != 1 || cmd.Run.Domains[0] != "example.test" {
+		t.Errorf("Domains = %v, want [example.test] (blank entries dropped & trimmed)", cmd.Run.Domains)
+	}
+}
+
 func TestParseConfigMissingFile(t *testing.T) {
 	_, err := Parse("jheader-proxy", []string{
 		"--config", filepath.Join(t.TempDir(), "does-not-exist.json"),

@@ -187,12 +187,14 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 		Quiet:   rf.quiet,
 		Verbose: rf.verbose,
 		Run: usecase.RunProxyInput{
-			Listen:       rf.listen,
-			Domains:      rf.domains,
+			// 入口(フラグ/--config/GUI)に依らず挙動を揃えるため、listen は trim し、
+			// domains/allow は空・空白だけの項目を落とす。
+			Listen:       strings.TrimSpace(rf.listen),
+			Domains:      config.TrimNonEmpty(rf.domains),
 			Headers:      parsedHeaders,
 			CACertPath:   rf.caCert,
 			CAKeyPath:    rf.caKey,
-			Allow:        rf.allow,
+			Allow:        config.TrimNonEmpty(rf.allow),
 			RedactValues: rf.redact,
 			Duration:     rf.duration,
 		},

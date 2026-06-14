@@ -72,6 +72,19 @@ func HeadersToSpecs(headers []HeaderKV) []string {
 	return specs
 }
 
+// TrimNonEmpty は各要素を前後の空白除去し、空要素を取り除いたスライスを返す。
+// ドメインや許可リストの「空・空白だけの項目」を入口(CLI/GUI)に依らず一様に
+// 落とすために使う。
+func TrimNonEmpty(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // ParseDuration は設定の duration 文字列を解釈する。"" / "0" は無制限(0)とする。
 func ParseDuration(s string) (time.Duration, error) {
 	s = strings.TrimSpace(s)

@@ -184,23 +184,12 @@ func buildInput(cfg RunConfig) (usecase.RunProxyInput, time.Duration, error) {
 
 	return usecase.RunProxyInput{
 		Listen:       strings.TrimSpace(cfg.Listen),
-		Domains:      trimNonEmpty(cfg.Domains),
+		Domains:      config.TrimNonEmpty(cfg.Domains),
 		Headers:      headers,
 		CACertPath:   cfg.CACertPath,
 		CAKeyPath:    cfg.CAKeyPath,
-		Allow:        trimNonEmpty(cfg.Allow),
+		Allow:        config.TrimNonEmpty(cfg.Allow),
 		RedactValues: cfg.Redact,
 		Duration:     dur,
 	}, dur, nil
-}
-
-// trimNonEmpty は各要素を trim し、空要素を除いたスライスを返す。
-func trimNonEmpty(in []string) []string {
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		if s = strings.TrimSpace(s); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
 }

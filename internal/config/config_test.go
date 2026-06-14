@@ -56,6 +56,19 @@ func TestHeadersToSpecs(t *testing.T) {
 	}
 }
 
+func TestTrimNonEmpty(t *testing.T) {
+	got := TrimNonEmpty([]string{"  a ", "", "  ", "b"})
+	want := []string{"a", "b"}
+	if len(got) != len(want) {
+		t.Fatalf("TrimNonEmpty = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("TrimNonEmpty[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestParseDuration(t *testing.T) {
 	cases := []struct {
 		in      string
