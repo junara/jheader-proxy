@@ -1,15 +1,15 @@
 // Package cli はコマンドライン引数をユースケースの入力へ変換するインターフェース
-// アダプタ。ユースケース層と domain 層に依存するが、インフラには依存しない。
+// アダプタ。フラグを config.RunConfig に組み立て、--config(設定ファイル)とマージした
+// うえで config.ToRunProxyInput により GUI と同一の変換を通す。
 package cli
 
 import (
+	"errors"
 	"flag"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/junara/jheader-proxy/internal/config"
-	"github.com/junara/jheader-proxy/internal/domain"
 	"github.com/junara/jheader-proxy/internal/usecase"
 )
 
@@ -53,25 +53,32 @@ func (s *stringList) Set(value string) error {
 	return nil
 }
 
-// runFlags は run / gen-ca モードに関わるフラグ値をまとめる。--config のマージ対象。
-type runFlags struct {
-	listen   string
-	domains  stringList
-	headers  stringList
-	allow    stringList
-	caCert   string
-	caKey    string
-	duration time.Duration
-	quiet    bool
-	verbose  bool
-	redact   bool
+// headerList は "Name=Value" を繰り返し受け取り HeaderKV として蓄積する flag.Value。
+// GUI のフォーム入力と同じ表現に揃えることで、以降の変換を config.RunConfig 経由で
+// 共通化できる。値の trim/重複解決は変換時(domain.ParseHeaders)に行う。
+type headerList []config.HeaderKV
+
+func (h *headerList) String() string { return strings.Join(config.HeadersToSpecs(*h), ",") }
+
+func (h *headerList) Set(value string) error {
+	// flag パッケージが "invalid value %q for flag -header:" を前置するため、
+	// ここでは理由のみ返す。
+	name, val, found := strings.Cut(value, "=")
+	if !found {
+		return errors.New("must be Name=Value")
+	}
+	if strings.TrimSpace(name) == "" {
+		return errors.New("header name is empty")
+	}
+	*h = append(*h, config.HeaderKV{Name: name, Value: val})
+	return nil
 }
 
 // applyConfig は path の設定ファイルを読み込み、コマンドラインで明示されなかった
 // 項目にだけその値を反映する(精度: フラグ明示指定 > 設定ファイル > 既定値)。
 // --domain/--header/--allow は1つでも指定されていれば設定ファイルのリストを
 // 置き換える(マージはしない)。
-func (r *runFlags) applyConfig(path string, fs *flag.FlagSet) error {
+func applyConfig(rc *config.RunConfig, path string, fs *flag.FlagSet) error {
 	fc, err := config.Load(path)
 	if err != nil {
 		return err
@@ -80,38 +87,34 @@ func (r *runFlags) applyConfig(path string, fs *flag.FlagSet) error {
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 
 	if !set["listen"] {
-		r.listen = fc.Listen
+		rc.Listen = fc.Listen
 	}
 	if !set["domain"] {
-		r.domains = fc.Domains
+		rc.Domains = fc.Domains
 	}
 	if !set["header"] {
-		r.headers = config.HeadersToSpecs(fc.Headers)
+		rc.Headers = fc.Headers
 	}
 	if !set["allow"] {
-		r.allow = fc.Allow
+		rc.Allow = fc.Allow
 	}
 	if !set["ca-cert"] {
-		r.caCert = fc.CACertPath
+		rc.CACertPath = fc.CACertPath
 	}
 	if !set["ca-key"] {
-		r.caKey = fc.CAKeyPath
+		rc.CAKeyPath = fc.CAKeyPath
 	}
 	if !set["duration"] {
-		d, err := config.ParseDuration(fc.Duration)
-		if err != nil {
-			return err
-		}
-		r.duration = d
+		rc.Duration = fc.Duration
 	}
 	if !set["quiet"] {
-		r.quiet = fc.Quiet
+		rc.Quiet = fc.Quiet
 	}
 	if !set["verbose"] {
-		r.verbose = fc.Verbose
+		rc.Verbose = fc.Verbose
 	}
 	if !set["redact"] {
-		r.redact = fc.Redact
+		rc.Redact = fc.Redact
 	}
 	return nil
 }
@@ -123,7 +126,10 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 	fs.SetOutput(output)
 
 	var (
-		rf          runFlags
+		rc          config.RunConfig
+		domains     stringList
+		headers     headerList
+		allow       stringList
 		genCA       bool
 		force       bool
 		showVersion bool
@@ -134,18 +140,18 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 	)
 	fs.StringVar(&configPath, "config", "",
 		"path to a JSON config file (GUI's config.json is compatible); command-line flags override its values")
-	fs.StringVar(&rf.listen, "listen", ":8080", "proxy listen address (e.g. :8080)")
-	fs.Var(&rf.domains, "domain", "target domain (repeatable; subdomains are included)")
-	fs.Var(&rf.headers, "header", `header to add in "Name=Value" form (repeatable)`)
-	fs.Var(&rf.allow, "allow", "allowed client IP or CIDR (repeatable; default allows all)")
-	fs.StringVar(&rf.caCert, "ca-cert", "", "path to the CA certificate PEM used for HTTPS MITM (required)")
-	fs.StringVar(&rf.caKey, "ca-key", "", "path to the CA private key PEM used for HTTPS MITM (required)")
-	fs.DurationVar(&rf.duration, "duration", 10*time.Minute, "auto-stop after this duration (0 to disable)")
+	fs.StringVar(&rc.Listen, "listen", ":8080", "proxy listen address (e.g. :8080)")
+	fs.Var(&domains, "domain", "target domain (repeatable; subdomains are included)")
+	fs.Var(&headers, "header", `header to add in "Name=Value" form (repeatable)`)
+	fs.Var(&allow, "allow", "allowed client IP or CIDR (repeatable; default allows all)")
+	fs.StringVar(&rc.CACertPath, "ca-cert", "", "path to the CA certificate PEM used for HTTPS MITM (required)")
+	fs.StringVar(&rc.CAKeyPath, "ca-key", "", "path to the CA private key PEM used for HTTPS MITM (required)")
+	fs.StringVar(&rc.Duration, "duration", "10m", "auto-stop after this duration, e.g. 30m (0 to disable)")
 	fs.BoolVar(&genCA, "gen-ca", false, "generate a new CA at --ca-cert/--ca-key and exit")
 	fs.BoolVar(&force, "force", false, "with --gen-ca, overwrite existing files")
-	fs.BoolVar(&rf.quiet, "quiet", false, "suppress per-request logs")
-	fs.BoolVar(&rf.verbose, "verbose", false, "also log responses for target domains")
-	fs.BoolVar(&rf.redact, "redact", false, "mask all header values in the startup log")
+	fs.BoolVar(&rc.Quiet, "quiet", false, "suppress per-request logs")
+	fs.BoolVar(&rc.Verbose, "verbose", false, "also log responses for target domains")
+	fs.BoolVar(&rc.Redact, "redact", false, "mask all header values in the startup log")
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 	fs.BoolVar(&gui, "gui", false, "launch the local web GUI to configure and control the proxy")
 	fs.StringVar(&guiListen, "gui-listen", "127.0.0.1:9090", "with --gui, the management UI listen address")
@@ -159,12 +165,17 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 		return &Command{Mode: ModeVersion}, nil
 	}
 
-	// --config 指定時は、コマンドラインで明示しなかった項目だけ設定ファイルの値で埋める。
+	// 繰り返しフラグを RunConfig へ移し、--config 指定時は明示しなかった項目だけ
+	// 設定ファイルの値で埋める。
+	rc.Domains = domains
+	rc.Headers = headers
+	rc.Allow = allow
 	if configPath != "" {
-		if err := rf.applyConfig(configPath, fs); err != nil {
+		if err := applyConfig(&rc, configPath, fs); err != nil {
 			return nil, err
 		}
 	}
+
 	if gui {
 		return &Command{
 			Mode: ModeGUI,
@@ -174,29 +185,18 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 	if genCA {
 		return &Command{
 			Mode:  ModeGenCA,
-			GenCA: usecase.GenerateCAInput{CertPath: rf.caCert, KeyPath: rf.caKey, Force: force},
+			GenCA: usecase.GenerateCAInput{CertPath: rc.CACertPath, KeyPath: rc.CAKeyPath, Force: force},
 		}, nil
 	}
 
-	parsedHeaders, err := domain.ParseHeaders(rf.headers)
+	input, err := config.ToRunProxyInput(rc)
 	if err != nil {
 		return nil, err
 	}
 	return &Command{
 		Mode:    ModeRun,
-		Quiet:   rf.quiet,
-		Verbose: rf.verbose,
-		Run: usecase.RunProxyInput{
-			// 入口(フラグ/--config/GUI)に依らず挙動を揃えるため、listen は trim し、
-			// domains/allow は空・空白だけの項目を落とす。
-			Listen:       strings.TrimSpace(rf.listen),
-			Domains:      config.TrimNonEmpty(rf.domains),
-			Headers:      parsedHeaders,
-			CACertPath:   rf.caCert,
-			CAKeyPath:    rf.caKey,
-			Allow:        config.TrimNonEmpty(rf.allow),
-			RedactValues: rf.redact,
-			Duration:     rf.duration,
-		},
+		Quiet:   rc.Quiet,
+		Verbose: rc.Verbose,
+		Run:     input,
 	}, nil
 }

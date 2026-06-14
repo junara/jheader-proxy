@@ -1,6 +1,7 @@
-// Package config は jheader-proxy の設定ファイルスキーマと、その読み込み・変換を
-// 提供する。CLI(--config)と GUI(config.json)で同一の JSON 形式を共有するため、
-// 両アダプタがこのパッケージを参照する。標準ライブラリにのみ依存する。
+// Package config は jheader-proxy の設定ファイルスキーマと、その読み込み・
+// ユースケース入力への変換を提供する。CLI(--config)と GUI(config.json)で
+// 同一の JSON 形式・同一の変換ロジックを共有するため、両アダプタがこのパッケージを
+// 参照する。依存は内側(domain / usecase)にのみ向く。
 package config
 
 import (
@@ -9,6 +10,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/junara/jheader-proxy/internal/domain"
+	"github.com/junara/jheader-proxy/internal/usecase"
 )
 
 // defaultDuration は duration 未指定時の既定値(自動停止までの時間)。
@@ -70,6 +74,30 @@ func HeadersToSpecs(headers []HeaderKV) []string {
 		specs = append(specs, name+"="+h.Value)
 	}
 	return specs
+}
+
+// ToRunProxyInput は RunConfig を RunProxy ユースケースの入力へ変換する正準ロジック。
+// CLI と GUI の両方がこの関数を通すことで、ヘッダー解釈・duration 解釈・trim/空要素
+// 除去のルールが一元化される。OnReady は呼び出し側で設定する。
+func ToRunProxyInput(cfg RunConfig) (usecase.RunProxyInput, error) {
+	headers, err := domain.ParseHeaders(HeadersToSpecs(cfg.Headers))
+	if err != nil {
+		return usecase.RunProxyInput{}, err
+	}
+	dur, err := ParseDuration(cfg.Duration)
+	if err != nil {
+		return usecase.RunProxyInput{}, err
+	}
+	return usecase.RunProxyInput{
+		Listen:       strings.TrimSpace(cfg.Listen),
+		Domains:      TrimNonEmpty(cfg.Domains),
+		Headers:      headers,
+		CACertPath:   cfg.CACertPath,
+		CAKeyPath:    cfg.CAKeyPath,
+		Allow:        TrimNonEmpty(cfg.Allow),
+		RedactValues: cfg.Redact,
+		Duration:     dur,
+	}, nil
 }
 
 // TrimNonEmpty は各要素を前後の空白除去し、空要素を取り除いたスライスを返す。

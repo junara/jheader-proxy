@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/junara/jheader-proxy/internal/config"
-	"github.com/junara/jheader-proxy/internal/domain"
 	"github.com/junara/jheader-proxy/internal/usecase"
 )
 
@@ -54,7 +52,7 @@ func (c *Controller) Sink() *LogSink { return c.sink }
 // Start は設定を検証してプロキシを起動する。待受開始(成功)を確認できるまで
 // ブロックし、起動前/起動時に失敗した場合はそのエラーを返す。
 func (c *Controller) Start(cfg RunConfig) error {
-	input, dur, err := buildInput(cfg)
+	input, err := config.ToRunProxyInput(cfg)
 	if err != nil {
 		return err
 	}
@@ -79,7 +77,7 @@ func (c *Controller) Start(cfg RunConfig) error {
 	c.cancel = cancel
 	c.done = done
 	c.startedAt = time.Now()
-	c.duration = dur
+	c.duration = input.Duration
 	c.cfg = cfg
 	c.lastErr = ""
 	c.mu.Unlock()
@@ -167,29 +165,4 @@ func (c *Controller) State() StateView {
 		}
 	}
 	return view
-}
-
-// buildInput は RunConfig を usecase 入力へ変換する。CLI と同じく
-// domain.ParseHeaders を再利用し、duration 文字列を解釈する。
-func buildInput(cfg RunConfig) (usecase.RunProxyInput, time.Duration, error) {
-	headers, err := domain.ParseHeaders(config.HeadersToSpecs(cfg.Headers))
-	if err != nil {
-		return usecase.RunProxyInput{}, 0, err
-	}
-
-	dur, err := config.ParseDuration(cfg.Duration)
-	if err != nil {
-		return usecase.RunProxyInput{}, 0, err
-	}
-
-	return usecase.RunProxyInput{
-		Listen:       strings.TrimSpace(cfg.Listen),
-		Domains:      config.TrimNonEmpty(cfg.Domains),
-		Headers:      headers,
-		CACertPath:   cfg.CACertPath,
-		CAKeyPath:    cfg.CAKeyPath,
-		Allow:        config.TrimNonEmpty(cfg.Allow),
-		RedactValues: cfg.Redact,
-		Duration:     dur,
-	}, dur, nil
 }

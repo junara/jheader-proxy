@@ -56,6 +56,46 @@ func TestHeadersToSpecs(t *testing.T) {
 	}
 }
 
+func TestToRunProxyInput(t *testing.T) {
+	in, err := ToRunProxyInput(RunConfig{
+		Listen:     "  :8080  ",
+		Domains:    []string{"  example.test  ", "", "  "},
+		Headers:    []HeaderKV{{Name: "X-A", Value: "1"}, {Name: "", Value: "skip"}},
+		Allow:      []string{"192.168.1.5", "  "},
+		Duration:   "30s",
+		CACertPath: "cert.pem",
+		CAKeyPath:  "key.pem",
+		Redact:     true,
+	})
+	if err != nil {
+		t.Fatalf("ToRunProxyInput returned error: %v", err)
+	}
+	if in.Listen != ":8080" {
+		t.Errorf("Listen = %q, want :8080 (trimmed)", in.Listen)
+	}
+	if len(in.Domains) != 1 || in.Domains[0] != "example.test" {
+		t.Errorf("Domains = %v, want [example.test] (trimmed, blanks dropped)", in.Domains)
+	}
+	if len(in.Allow) != 1 || in.Allow[0] != "192.168.1.5" {
+		t.Errorf("Allow = %v, want [192.168.1.5] (blank dropped)", in.Allow)
+	}
+	if in.Headers.Len() != 1 {
+		t.Errorf("Headers.Len() = %d, want 1 (empty-name skipped)", in.Headers.Len())
+	}
+	if in.Duration != 30*time.Second {
+		t.Errorf("Duration = %s, want 30s", in.Duration)
+	}
+	if !in.RedactValues {
+		t.Error("RedactValues = false, want true")
+	}
+}
+
+func TestToRunProxyInputInvalidDuration(t *testing.T) {
+	if _, err := ToRunProxyInput(RunConfig{Duration: "nope"}); err == nil {
+		t.Error("ToRunProxyInput with bad duration returned nil error, want error")
+	}
+}
+
 func TestTrimNonEmpty(t *testing.T) {
 	got := TrimNonEmpty([]string{"  a ", "", "  ", "b"})
 	want := []string{"a", "b"}
