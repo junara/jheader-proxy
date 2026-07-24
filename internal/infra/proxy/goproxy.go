@@ -7,11 +7,13 @@ import (
 	"context"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
 	"strings"
+	"syscall"
 	"time"
 
 	_ "embed"
@@ -100,7 +102,13 @@ func (s *Server) Serve(ctx context.Context, cfg usecase.ProxyConfig) error {
 	var lc net.ListenConfig
 	listener, err := lc.Listen(ctx, "tcp", cfg.Listen)
 	if err != nil {
-		return err
+		// 起動時に最も踏みやすいエラーなので、原因と次の一手を添える。
+		if errors.Is(err, syscall.EADDRINUSE) {
+			return fmt.Errorf("failed to listen on %s: %w"+
+				" (another process is using this address; stop it or choose another port with --listen)",
+				cfg.Listen, err)
+		}
+		return fmt.Errorf("failed to listen on %s: %w", cfg.Listen, err)
 	}
 	if !cfg.Allow.AllowsAll() {
 		listener = &filteredListener{Listener: listener, allow: cfg.Allow, logger: s.logger}

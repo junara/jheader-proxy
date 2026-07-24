@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +133,36 @@ func TestRunProxyCALoadError(t *testing.T) {
 	}
 	if server.called {
 		t.Error("Serve should not be called when CA load fails")
+	}
+}
+
+func TestRunProxyCAMissingFileHint(t *testing.T) {
+	// CA ファイルが無い場合は gen-ca での生成手順をヒントとして添える。
+	loadErr := fmt.Errorf("failed to read CA cert %q: %w", "cert.pem", fs.ErrNotExist)
+	uc := NewRunProxy(&fakeCAProvider{err: loadErr}, &fakeProxyServer{}, nopLogger{})
+
+	err := uc.Execute(context.Background(), validInput(t))
+	if err == nil {
+		t.Fatal("Execute returned nil error, want CA load error")
+	}
+	if !strings.Contains(err.Error(), "gen-ca") {
+		t.Errorf("error %q does not include gen-ca hint", err)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("error %q does not wrap fs.ErrNotExist", err)
+	}
+}
+
+func TestRunProxyCAOtherErrorNoHint(t *testing.T) {
+	// ファイル欠落以外の読み込み失敗には gen-ca のヒントを付けない
+	// (既存ファイルが壊れている場合に上書き生成を促すのは危険なため)。
+	uc := NewRunProxy(&fakeCAProvider{err: errors.New("broken pem")}, &fakeProxyServer{}, nopLogger{})
+
+	err := uc.Execute(context.Background(), validInput(t))
+	if err == nil {
+		t.Fatal("Execute returned nil error, want CA load error")
+	}
+	if strings.Contains(err.Error(), "gen-ca") {
+		t.Errorf("error %q should not include gen-ca hint", err)
 	}
 }

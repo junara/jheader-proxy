@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
 	"strings"
 	"time"
 
@@ -36,7 +38,7 @@ func logCAExpiry(logger Logger, notAfter time.Time) {
 	remaining := time.Until(notAfter)
 	switch {
 	case remaining <= 0:
-		logger.Printf("WARNING: CA certificate expired on %s; regenerate it with --gen-ca --force", date)
+		logger.Printf("WARNING: CA certificate expired on %s; regenerate it with 'gen-ca --force'", date)
 	case remaining <= caExpiryWarnThreshold:
 		logger.Printf("WARNING: CA certificate expires soon: %s (in %d days)", date, int(remaining/day))
 	default:
@@ -66,7 +68,7 @@ func (u *RunProxy) Execute(ctx context.Context, in RunProxyInput) error {
 		return errors.New("at least one --header is required")
 	}
 	if in.CACertPath == "" || in.CAKeyPath == "" {
-		return errors.New("--ca-cert and --ca-key are required (generate one with --gen-ca)")
+		return errors.New("--ca-cert and --ca-key are required (generate one with the 'gen-ca' command)")
 	}
 
 	allow, err := domain.NewAllowList(in.Allow)
@@ -75,6 +77,11 @@ func (u *RunProxy) Execute(ctx context.Context, in RunProxyInput) error {
 	}
 	cert, err := u.ca.Load(in.CACertPath, in.CAKeyPath)
 	if err != nil {
+		// ファイルが無いのは初回利用時の典型的なつまずきなので、次の一手を添える。
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%w (generate your own CA with: gen-ca --cert %s --key %s)",
+				err, in.CACertPath, in.CAKeyPath)
+		}
 		return err
 	}
 	matcher := domain.NewMatcher(in.Domains)
