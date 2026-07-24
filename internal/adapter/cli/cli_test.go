@@ -136,7 +136,11 @@ func TestParseNoArgsShowsUsage(t *testing.T) {
 		t.Errorf("Parse([]) cmd = %+v, want nil", cmd)
 	}
 	out := buf.String()
-	for _, want := range []string{"使い方:", "コマンド:", "run", "gen-ca", "gui", "version"} {
+	for _, want := range []string{
+		"使い方:", "コマンド:", "run", "gen-ca", "gui", "version",
+		"https://junara.github.io/jheader-proxy/",
+		"https://github.com/junara/jheader-proxy/issues",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("usage output missing %q\n--- output ---\n%s", want, out)
 		}

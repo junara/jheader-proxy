@@ -144,6 +144,9 @@ const rootUsageTemplate = `%[1]s - 対象ドメインへのリクエストに HT
   %[1]s gui
 
 各コマンドの詳細は '%[1]s <コマンド> --help' を参照してください。
+
+詳しいマニュアル: https://junara.github.io/jheader-proxy/
+不具合報告:       https://github.com/junara/jheader-proxy/issues
 `
 
 // runUsageTemplate は run サブコマンドの使い方。%[1]s はプログラム名。
