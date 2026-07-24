@@ -70,7 +70,7 @@ func runGUI(cmd *cli.Command) error {
 	return web.Serve(ctx, deps, web.Options{
 		Listen:  cmd.GUI.Listen,
 		NoOpen:  cmd.GUI.NoOpen,
-		Version: versionString(),
+		Version: resolveVersion(),
 	})
 }
 
@@ -81,6 +81,9 @@ func runProxy(cmd *cli.Command) error {
 
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	server := proxy.New(logger, proxy.Options{Quiet: cmd.Quiet, Verbose: cmd.Verbose})
+	// 起動ログの先頭に実行中バイナリのバージョンを出す(どのバージョンが動いて
+	// いるかを一目で分かるようにする)。製品名はここ(合成ルート)だけが知っている。
+	logger.Println(versionString())
 	return usecase.NewRunProxy(ca.New(), server, logger).Execute(ctx, cmd.Run)
 }
 
@@ -95,17 +98,23 @@ func runGenCA(store usecase.CAGenerator, in usecase.GenerateCAInput) error {
 	return nil
 }
 
-// versionString はビルド埋め込みのバージョン、無ければモジュール情報を返す。
-func versionString() string {
+// resolveVersion はビルド埋め込みのバージョン、無ければモジュール情報、
+// いずれも無ければ "dev" を返す(先頭に "jheader-proxy" を付けない素の値)。
+func resolveVersion() string {
 	if version != "dev" {
-		return "jheader-proxy " + version
+		return version
 	}
 	if info, ok := debug.ReadBuildInfo(); ok {
 		if v := info.Main.Version; v != "" && v != "(devel)" {
-			return "jheader-proxy " + v
+			return v
 		}
 	}
-	return "jheader-proxy dev"
+	return "dev"
+}
+
+// versionString は --version 表示用に "jheader-proxy <version>" を返す。
+func versionString() string {
+	return "jheader-proxy " + resolveVersion()
 }
 
 func fatal(err error) {

@@ -89,7 +89,7 @@ func Serve(ctx context.Context, deps Deps, opts Options) error {
 		_ = httpSrv.Shutdown(shutdownCtx) //nolint:contextcheck // 停止用に親ctxとは独立したタイムアウトを使う
 	}()
 
-	_, _ = fmt.Fprintf(stdout, "jheader-proxy GUI: %s\n", url)
+	_, _ = fmt.Fprintf(stdout, "jheader-proxy %s GUI: %s\n", opts.Version, url)
 	if !opts.NoOpen {
 		openBrowser(ctx, url)
 	}

@@ -78,6 +78,10 @@ func TestStateWithToken(t *testing.T) {
 	if resp.Running {
 		t.Fatal("expected not running initially")
 	}
+	// GUI ヘッダーのバージョン表示が依存する配線(server.version → JSON)を検証する。
+	if resp.Version != "test" {
+		t.Errorf("Version = %q, want %q", resp.Version, "test")
+	}
 }
 
 func TestStartStopViaHTTP(t *testing.T) {

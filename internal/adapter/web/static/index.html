@@ -60,6 +60,7 @@
 <body>
 <header>
   <h1>jheader-proxy</h1>
+  <span id="version" class="hint"></span>
   <span id="badge" class="badge stopped">停止中</span>
   <span id="remaining" class="hint"></span>
   <nav class="header-links">
@@ -226,6 +227,7 @@ function fillForm(c){
 }
 
 function renderState(st){
+  if (st.version) $("version").textContent = /^\d/.test(st.version) ? "v" + st.version : st.version;
   const running = st.running;
   $("badge").textContent = running ? "稼働中" : "停止中";
   $("badge").className = "badge " + (running ? "running" : "stopped");
