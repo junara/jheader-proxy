@@ -36,7 +36,7 @@ func TestParseConfigFile(t *testing.T) {
 		"caKeyPath": "key.pem"
 	}`)
 
-	cmd, err := Parse("jheader-proxy", []string{"--config", path}, io.Discard)
+	cmd, err := Parse("jheader-proxy", []string{"--config", path}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestParseConfigFlagsOverride(t *testing.T) {
 		"--listen", ":9999",
 		"--domain", "from-flag.test",
 		"--header", "X-From-Flag=2",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestParseConfigBlankDomainsTrimmed(t *testing.T) {
 		"caKeyPath": "key.pem"
 	}`)
 
-	cmd, err := Parse("jheader-proxy", []string{"--config", path}, io.Discard)
+	cmd, err := Parse("jheader-proxy", []string{"--config", path}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestParseConfigBlankDomainsTrimmed(t *testing.T) {
 func TestParseConfigMissingFile(t *testing.T) {
 	_, err := Parse("jheader-proxy", []string{
 		"--config", filepath.Join(t.TempDir(), "does-not-exist.json"),
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err == nil {
 		t.Error("Parse with missing --config file returned nil error, want error")
 	}
@@ -127,7 +127,8 @@ func TestParseConfigMissingFile(t *testing.T) {
 
 func TestParseNoArgsShowsUsage(t *testing.T) {
 	var buf bytes.Buffer
-	cmd, err := Parse("jheader-proxy", []string{}, &buf)
+	// 引数なしの使い方表示は誤用の通知なので stderr に出る。
+	cmd, err := Parse("jheader-proxy", []string{}, io.Discard, &buf)
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("Parse([]) err = %v, want flag.ErrHelp", err)
 	}
@@ -143,15 +144,33 @@ func TestParseNoArgsShowsUsage(t *testing.T) {
 }
 
 func TestParseHelpCommand(t *testing.T) {
+	// 明示的に要求されたヘルプは stdout に出る(grep やページャに渡せるように)。
 	for _, arg := range []string{"help", "-h", "--help"} {
-		var buf bytes.Buffer
-		_, err := Parse("jheader-proxy", []string{arg}, &buf)
+		var stdout, stderr bytes.Buffer
+		_, err := Parse("jheader-proxy", []string{arg}, &stdout, &stderr)
 		if !errors.Is(err, flag.ErrHelp) {
 			t.Errorf("Parse([%q]) err = %v, want flag.ErrHelp", arg, err)
 		}
-		if !strings.Contains(buf.String(), "コマンド:") {
-			t.Errorf("Parse([%q]) usage output missing command list", arg)
+		if !strings.Contains(stdout.String(), "コマンド:") {
+			t.Errorf("Parse([%q]) stdout missing command list", arg)
 		}
+		if stderr.Len() != 0 {
+			t.Errorf("Parse([%q]) wrote to stderr: %q", arg, stderr.String())
+		}
+	}
+}
+
+func TestParseSubcommandHelpToStdout(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	_, err := Parse("jheader-proxy", []string{"run", "--help"}, &stdout, &stderr)
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("Parse(['run', '--help']) err = %v, want flag.ErrHelp", err)
+	}
+	if !strings.Contains(stdout.String(), "使い方:") || !strings.Contains(stdout.String(), "-domain") {
+		t.Errorf("run usage missing from stdout\n--- stdout ---\n%s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("run --help wrote to stderr: %q", stderr.String())
 	}
 }
 
@@ -163,7 +182,7 @@ func TestParseRunSubcommand(t *testing.T) {
 		"--header", "X-Debug-User=jun",
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -184,7 +203,7 @@ func TestParseGenCASubcommand(t *testing.T) {
 		{"gen-ca", "--cert", "cert.pem", "--key", "key.pem"},
 		{"gen-ca", "--ca-cert", "cert.pem", "--ca-key", "key.pem"},
 	} {
-		cmd, err := Parse("jheader-proxy", args, io.Discard)
+		cmd, err := Parse("jheader-proxy", args, io.Discard, io.Discard)
 		if err != nil {
 			t.Fatalf("Parse(%v) returned error: %v", args, err)
 		}
@@ -201,7 +220,7 @@ func TestParseGenCASubcommand(t *testing.T) {
 }
 
 func TestParseGUISubcommand(t *testing.T) {
-	cmd, err := Parse("jheader-proxy", []string{"gui"}, io.Discard)
+	cmd, err := Parse("jheader-proxy", []string{"gui"}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -212,7 +231,7 @@ func TestParseGUISubcommand(t *testing.T) {
 		t.Errorf("GUI = %+v, want default listen and NoOpen=false", cmd.GUI)
 	}
 
-	cmd, err = Parse("jheader-proxy", []string{"gui", "--listen", "127.0.0.1:9999", "--no-open"}, io.Discard)
+	cmd, err = Parse("jheader-proxy", []string{"gui", "--listen", "127.0.0.1:9999", "--no-open"}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -222,7 +241,7 @@ func TestParseGUISubcommand(t *testing.T) {
 }
 
 func TestParseVersionSubcommand(t *testing.T) {
-	cmd, err := Parse("jheader-proxy", []string{"version"}, io.Discard)
+	cmd, err := Parse("jheader-proxy", []string{"version"}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -232,7 +251,7 @@ func TestParseVersionSubcommand(t *testing.T) {
 }
 
 func TestParseUnknownCommandSuggests(t *testing.T) {
-	_, err := Parse("jheader-proxy", []string{"gen-cert"}, io.Discard)
+	_, err := Parse("jheader-proxy", []string{"gen-cert"}, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("Parse with unknown command returned nil error, want error")
 	}
@@ -242,44 +261,48 @@ func TestParseUnknownCommandSuggests(t *testing.T) {
 }
 
 func TestParseSubcommandRejectsPositionalArg(t *testing.T) {
-	_, err := Parse("jheader-proxy", []string{"gui", "extra"}, io.Discard)
+	_, err := Parse("jheader-proxy", []string{"gui", "extra"}, io.Discard, io.Discard)
 	if err == nil {
 		t.Error("Parse('gui extra') returned nil error, want error")
 	}
 }
 
 func TestParseLegacyModeConflict(t *testing.T) {
-	_, err := Parse("jheader-proxy", []string{"--gui", "--gen-ca"}, io.Discard)
+	_, err := Parse("jheader-proxy", []string{"--gui", "--gen-ca"}, io.Discard, io.Discard)
 	if err == nil {
 		t.Error("Parse with --gui --gen-ca returned nil error, want error")
 	}
 }
 
 func TestParseLegacyDeprecationWarning(t *testing.T) {
-	var buf bytes.Buffer
+	// 非推奨警告は診断メッセージなので stderr に出る。
+	var stdout, stderr bytes.Buffer
 	_, err := Parse("jheader-proxy", []string{
 		"--gen-ca", "--ca-cert", "cert.pem", "--ca-key", "key.pem",
-	}, &buf)
+	}, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "非推奨") {
-		t.Errorf("deprecation warning missing\n--- output ---\n%s", buf.String())
+	if !strings.Contains(stderr.String(), "非推奨") {
+		t.Errorf("deprecation warning missing from stderr\n--- stderr ---\n%s", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("unexpected stdout output: %q", stdout.String())
 	}
 }
 
 func TestParseLegacyVersionNoWarning(t *testing.T) {
 	// --version は慣習的なフラグなので警告なしで受け付ける。
-	var buf bytes.Buffer
-	cmd, err := Parse("jheader-proxy", []string{"--version"}, &buf)
+	var stdout, stderr bytes.Buffer
+	cmd, err := Parse("jheader-proxy", []string{"--version"}, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
 	if cmd.Mode != ModeVersion {
 		t.Errorf("Mode = %v, want ModeVersion", cmd.Mode)
 	}
-	if buf.Len() != 0 {
-		t.Errorf("unexpected output for --version: %q", buf.String())
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Errorf("unexpected output for --version: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
 
@@ -291,7 +314,7 @@ func TestParseRunMode(t *testing.T) {
 		"--header", "X-Debug-User=jun",
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -317,7 +340,7 @@ func TestParseGenCAMode(t *testing.T) {
 		"--gen-ca",
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -337,7 +360,7 @@ func TestParseGenCAForce(t *testing.T) {
 		"--gen-ca", "--force",
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -347,7 +370,7 @@ func TestParseGenCAForce(t *testing.T) {
 }
 
 func TestParseVersionMode(t *testing.T) {
-	cmd, err := Parse("jheader-proxy", []string{"--version"}, io.Discard)
+	cmd, err := Parse("jheader-proxy", []string{"--version"}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -367,7 +390,7 @@ func TestParseRuntimeOptions(t *testing.T) {
 		"--quiet",
 		"--verbose",
 		"--redact",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -388,7 +411,7 @@ func TestParseDefaultListen(t *testing.T) {
 		"--header", "X-Debug-User=jun",
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -407,7 +430,7 @@ func TestParseDuration(t *testing.T) {
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
 		"--duration", "30s",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -422,7 +445,7 @@ func TestParseInvalidHeader(t *testing.T) {
 		"--header", "X-Debug-User", // = がない
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err == nil {
 		t.Error("Parse with malformed --header returned nil error, want error")
 	}

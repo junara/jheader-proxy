@@ -31,7 +31,7 @@ X-Api-Key = abc123
 		"--header-file", path,
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestParseHeaderFileInlineHeaderWins(t *testing.T) {
 		"--header", "X-Debug-User=from-flag",
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestParseHeaderFileReplacesConfigHeaders(t *testing.T) {
 		"run",
 		"--config", configPath,
 		"--header-file", headerPath,
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestParseHeaderFileInvalidLine(t *testing.T) {
 		"--header-file", path,
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("Parse with invalid header line returned nil error, want error")
 	}
@@ -124,7 +124,7 @@ func TestParseHeaderFileMissing(t *testing.T) {
 		"--header-file", filepath.Join(t.TempDir(), "does-not-exist.txt"),
 		"--ca-cert", "cert.pem",
 		"--ca-key", "key.pem",
-	}, io.Discard)
+	}, io.Discard, io.Discard)
 	if err == nil {
 		t.Error("Parse with missing header file returned nil error, want error")
 	}

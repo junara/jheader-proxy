@@ -183,6 +183,9 @@ const (
 	cmdHelp    = "help"
 )
 
+// helpFlag は明示的なヘルプ要求のロングフラグ表記。
+const helpFlag = "--help"
+
 // commands は認識するサブコマンド名の一覧。タイポ時の提案にも使う。
 var commands = []string{cmdRun, cmdGenCA, cmdGUI, cmdVersion, cmdHelp}
 
@@ -191,40 +194,60 @@ func writeRootUsage(w io.Writer, name string) {
 	_, _ = io.WriteString(w, fmt.Sprintf(rootUsageTemplate, name))
 }
 
-// writeSubUsage はサブコマンドの使い方の概要とオプション一覧を fs の出力先に書き出す。
-func writeSubUsage(fs *flag.FlagSet, template, name string) {
-	_, _ = io.WriteString(fs.Output(), fmt.Sprintf(template, name))
+// writeSubUsage はサブコマンドの使い方の概要とオプション一覧を w に書き出す。
+func writeSubUsage(fs *flag.FlagSet, template, name string, w io.Writer) {
+	fs.SetOutput(w)
+	_, _ = io.WriteString(w, fmt.Sprintf(template, name))
 	fs.PrintDefaults()
 }
 
+// parseSubFlags は fs で args を解析し、ヘルプとエラーの出力先を使い分ける共通
+// 処理。明示的に要求されたヘルプ(-h/--help)は stdout へ書き出し(clig.dev:
+// grep やページャに渡せるように)、フラグエラーは使い方を示すヒントを添えて
+// 返す(flag パッケージ自身の出力は抑制し、呼び出し元の error 表示に一本化する)。
+func parseSubFlags(fs *flag.FlagSet, args []string, usage func(io.Writer), stdout io.Writer, helpCmd string) error {
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
+	err := fs.Parse(args)
+	if errors.Is(err, flag.ErrHelp) {
+		usage(stdout)
+		return flag.ErrHelp
+	}
+	if err != nil {
+		return fmt.Errorf("%w; run '%s --help' for usage", err, helpCmd)
+	}
+	return nil
+}
+
 // Parse は args を Command に解析する。先頭引数をサブコマンドとして解釈し、
-// フラグで始まる場合は従来のフラグ形式(非推奨)として解析する。フラグエラー
-// (-h を含む)は、使用方法を output に書き出した上でそのまま返す。
-// 引数なしの場合も使い方を表示する。
-func Parse(name string, args []string, output io.Writer) (*Command, error) {
+// フラグで始まる場合は従来のフラグ形式(非推奨)として解析する。明示的に要求
+// されたヘルプ(help / -h / --help)は stdout へ、引数なし実行時の使い方表示や
+// 非推奨警告は stderr へ書き出す。
+func Parse(name string, args []string, stdout, stderr io.Writer) (*Command, error) {
 	// 引数なしで実行されたら、エラーにせず使い方とコマンド一覧を表示して終了する。
+	// これは誤用の通知なので stderr へ出す。
 	if len(args) == 0 {
-		writeRootUsage(output, name)
+		writeRootUsage(stderr, name)
 		return nil, flag.ErrHelp
 	}
 
 	switch args[0] {
-	case cmdHelp, "-h", "-help", "--help":
-		writeRootUsage(output, name)
+	case cmdHelp, "-h", "-help", helpFlag:
+		writeRootUsage(stdout, name)
 		return nil, flag.ErrHelp
 	case cmdVersion:
 		return &Command{Mode: ModeVersion}, nil
 	case cmdRun:
-		return parseRun(name, args[1:], output)
+		return parseRun(name, args[1:], stdout)
 	case cmdGenCA:
-		return parseGenCA(name, args[1:], output)
+		return parseGenCA(name, args[1:], stdout)
 	case cmdGUI:
-		return parseGUI(name, args[1:], output)
+		return parseGUI(name, args[1:], stdout)
 	}
 
 	// フラグで始まる場合は従来のフラグ形式(非推奨)として受け付ける。
 	if strings.HasPrefix(args[0], "-") {
-		return parseLegacy(name, args, output)
+		return parseLegacy(name, args, stdout, stderr)
 	}
 	return nil, unknownCommandError(name, args[0])
 }
@@ -292,14 +315,13 @@ func buildRunCommand(fs *flag.FlagSet, f *runFlags) (*Command, error) {
 }
 
 // parseRun は run サブコマンドを解析する。
-func parseRun(name string, args []string, output io.Writer) (*Command, error) {
+func parseRun(name string, args []string, stdout io.Writer) (*Command, error) {
 	fs := flag.NewFlagSet(name+" run", flag.ContinueOnError)
-	fs.SetOutput(output)
 	var f runFlags
 	bindRunFlags(fs, &f)
-	fs.Usage = func() { writeSubUsage(fs, runUsageTemplate, name) }
 
-	if err := fs.Parse(args); err != nil {
+	usage := func(w io.Writer) { writeSubUsage(fs, runUsageTemplate, name, w) }
+	if err := parseSubFlags(fs, args, usage, stdout, name+" run"); err != nil {
 		return nil, err
 	}
 	if fs.NArg() > 0 {
@@ -310,9 +332,8 @@ func parseRun(name string, args []string, output io.Writer) (*Command, error) {
 
 // parseGenCA は gen-ca サブコマンドを解析する。--cert/--key が主で、run と揃えた
 // --ca-cert/--ca-key も別名として受け付ける。
-func parseGenCA(name string, args []string, output io.Writer) (*Command, error) {
+func parseGenCA(name string, args []string, stdout io.Writer) (*Command, error) {
 	fs := flag.NewFlagSet(name+" gen-ca", flag.ContinueOnError)
-	fs.SetOutput(output)
 	var cert, key string
 	var force bool
 	fs.StringVar(&cert, "cert", "", "生成する CA 証明書 PEM の出力先パス（必須）")
@@ -320,9 +341,9 @@ func parseGenCA(name string, args []string, output io.Writer) (*Command, error) 
 	fs.StringVar(&key, "key", "", "生成する CA 秘密鍵 PEM の出力先パス（必須）")
 	fs.StringVar(&key, "ca-key", "", "--key の別名")
 	fs.BoolVar(&force, "force", false, "既存ファイルを上書きする")
-	fs.Usage = func() { writeSubUsage(fs, genCAUsageTemplate, name) }
 
-	if err := fs.Parse(args); err != nil {
+	usage := func(w io.Writer) { writeSubUsage(fs, genCAUsageTemplate, name, w) }
+	if err := parseSubFlags(fs, args, usage, stdout, name+" gen-ca"); err != nil {
 		return nil, err
 	}
 	if fs.NArg() > 0 {
@@ -335,15 +356,14 @@ func parseGenCA(name string, args []string, output io.Writer) (*Command, error) 
 }
 
 // parseGUI は gui サブコマンドを解析する。
-func parseGUI(name string, args []string, output io.Writer) (*Command, error) {
+func parseGUI(name string, args []string, stdout io.Writer) (*Command, error) {
 	fs := flag.NewFlagSet(name+" gui", flag.ContinueOnError)
-	fs.SetOutput(output)
 	var f GUIOptions
 	fs.StringVar(&f.Listen, "listen", "127.0.0.1:9090", "管理画面の待受アドレス")
 	fs.BoolVar(&f.NoOpen, "no-open", false, "ブラウザを自動起動しない")
-	fs.Usage = func() { writeSubUsage(fs, guiUsageTemplate, name) }
 
-	if err := fs.Parse(args); err != nil {
+	usage := func(w io.Writer) { writeSubUsage(fs, guiUsageTemplate, name, w) }
+	if err := parseSubFlags(fs, args, usage, stdout, name+" gui"); err != nil {
 		return nil, err
 	}
 	if fs.NArg() > 0 {
@@ -366,10 +386,9 @@ type legacyFlags struct {
 }
 
 // parseLegacy は従来のフラグ形式を解析する。--version 以外のモードフラグと
-// サブコマンドなしの run 相当には非推奨警告を出す。
-func parseLegacy(name string, args []string, output io.Writer) (*Command, error) {
+// サブコマンドなしの run 相当には非推奨警告を stderr へ出す。
+func parseLegacy(name string, args []string, stdout, stderr io.Writer) (*Command, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(output)
 	var f legacyFlags
 	bindRunFlags(fs, &f.runFlags)
 	fs.BoolVar(&f.genCA, cmdGenCA, false, "非推奨: 'gen-ca' サブコマンドを使う")
@@ -378,13 +397,14 @@ func parseLegacy(name string, args []string, output io.Writer) (*Command, error)
 	fs.BoolVar(&f.gui, "gui", false, "非推奨: 'gui' サブコマンドを使う")
 	fs.StringVar(&f.guiListen, "gui-listen", "127.0.0.1:9090", "非推奨: 'gui --listen' を使う")
 	fs.BoolVar(&f.noOpen, "no-open", false, "非推奨: 'gui --no-open' を使う")
-	fs.Usage = func() {
-		writeRootUsage(fs.Output(), name)
-		_, _ = io.WriteString(fs.Output(), "\n従来のフラグ形式（非推奨）のオプション:\n")
+
+	usage := func(w io.Writer) {
+		writeRootUsage(w, name)
+		_, _ = io.WriteString(w, "\n従来のフラグ形式（非推奨）のオプション:\n")
+		fs.SetOutput(w)
 		fs.PrintDefaults()
 	}
-
-	if err := fs.Parse(args); err != nil {
+	if err := parseSubFlags(fs, args, usage, stdout, name); err != nil {
 		return nil, err
 	}
 	if fs.NArg() > 0 {
@@ -408,21 +428,21 @@ func parseLegacy(name string, args []string, output io.Writer) (*Command, error)
 		return &Command{Mode: ModeVersion}, nil
 	}
 	if f.gui {
-		deprecationWarning(output, name, "--gui", "gui")
+		deprecationWarning(stderr, name, "--gui", "gui")
 		return &Command{
 			Mode: ModeGUI,
 			GUI:  GUIOptions{Listen: f.guiListen, NoOpen: f.noOpen},
 		}, nil
 	}
 	if f.genCA {
-		deprecationWarning(output, name, "--gen-ca", cmdGenCA)
+		deprecationWarning(stderr, name, "--gen-ca", cmdGenCA)
 		return &Command{
 			Mode:  ModeGenCA,
 			GenCA: usecase.GenerateCAInput{CertPath: f.rc.CACertPath, KeyPath: f.rc.CAKeyPath, Force: f.force},
 		}, nil
 	}
 
-	deprecationWarning(output, name, "サブコマンドなしの実行", "run")
+	deprecationWarning(stderr, name, "サブコマンドなしの実行", "run")
 	return buildRunCommand(fs, &f.runFlags)
 }
 
