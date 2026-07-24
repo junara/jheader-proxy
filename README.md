@@ -162,7 +162,8 @@ CLI引数を手で組み立てる代わりに、ブラウザから設定・起�
 | `--config` | 設定をまとめた JSON ファイルのパス。GUIの `config.json` と互換。コマンドライン引数が設定ファイルより優先される |
 | `--listen` | プロキシの待ち受けアドレス。デフォルトは `:8080` |
 | `--domain` | ヘッダー追加対象のドメイン。複数回指定可能。サブドメインも対象になる。1つ以上必須 |
-| `--header` | 追加するヘッダーを `Name=Value` 形式で指定。複数回指定可能。1つ以上必須 |
+| `--header` | 追加するヘッダーを `Name=Value` 形式で指定。複数回指定可能。`--header-file` と合わせて1つ以上必須 |
+| `--header-file` | 追加するヘッダーを書いたファイルのパス（1行1件の `Name=Value`。空行と `#` 始まりの行は無視）。複数回指定可能。**トークン等の秘匿値はシェル履歴や `ps` 出力に残る `--header` ではなくこちらで渡すこと** |
 | `--ca-cert` | HTTPS MITMに使うCA証明書PEMのパス。必須 |
 | `--ca-key` | HTTPS MITMに使うCA秘密鍵PEMのパス。必須 |
 | `--duration` | この時間が過ぎると自動停止する。デフォルト `10m`。`0` で無制限 |
@@ -182,6 +183,14 @@ CLI引数を手で組み立てる代わりに、ブラウザから設定・起�
 > `--allow` を指定すると、許可リストにないクライアントの接続は受理時に拒否し `[DENY] <IP>` をログ出力します。共有Wi-Fiでは、iPhoneのIPを `--allow` で限定しておくと、第三者にプロキシを使われる事故を防げます。
 >
 > `Authorization` / `Cookie` / `Set-Cookie` / `X-Api-Key` / `Proxy-Authorization` は、`--redact` を付けなくても起動ログでは値が `***` にマスクされます。
+>
+> 認証トークン等の秘匿値を `--header` で直接指定すると、シェル履歴と `ps` の出力にそのまま残ります。秘匿値は `--header-file`（`chmod 600` したファイル）または `--config` で渡してください。
+>
+> ```bash
+> # headers.txt（1行1件の Name=Value。# 始まりはコメント）
+> #   Authorization=Bearer <token>
+> ./jheader-proxy run --domain example.test --header-file headers.txt --ca-cert ca-cert.pem --ca-key ca-key.pem
+> ```
 >
 > 停止忘れ防止のため、デフォルトで起動から **10分** 経過すると自動停止します（`auto-stop after 10m0s` をログ表示）。時間を変えるには `--duration 30m` のように指定し、無制限にするには `--duration 0` を指定します。
 >

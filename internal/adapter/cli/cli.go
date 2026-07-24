@@ -98,7 +98,7 @@ func applyConfig(rc *config.RunConfig, path string, fs *flag.FlagSet) error {
 	if !set["domain"] {
 		rc.Domains = fc.Domains
 	}
-	if !set["header"] {
+	if !set["header"] && !set["header-file"] {
 		rc.Headers = fc.Headers
 	}
 	if !set["allow"] {
@@ -231,11 +231,12 @@ func Parse(name string, args []string, output io.Writer) (*Command, error) {
 
 // runFlags は run サブコマンド(および従来形式)のフラグ束縛先。
 type runFlags struct {
-	rc         config.RunConfig
-	domains    stringList
-	headers    headerList
-	allow      stringList
-	configPath string
+	rc          config.RunConfig
+	domains     stringList
+	headers     headerList
+	headerFiles stringList
+	allow       stringList
+	configPath  string
 }
 
 // bindRunFlags は fs にプロキシ実行に関わるフラグを登録する。
@@ -245,6 +246,9 @@ func bindRunFlags(fs *flag.FlagSet, f *runFlags) {
 	fs.StringVar(&f.rc.Listen, "listen", ":8080", "プロキシの待受アドレス（例: :8080）")
 	fs.Var(&f.domains, "domain", "ヘッダー付与の対象ドメイン（複数指定可・サブドメインも対象）")
 	fs.Var(&f.headers, "header", "付与するヘッダー（Name=Value 形式・複数指定可）")
+	fs.Var(&f.headerFiles, "header-file",
+		"付与するヘッダーを書いたファイルのパス（1行1件の Name=Value。空行と # 始まりの行は無視。複数指定可）。"+
+			"トークン等の秘匿値はシェル履歴に残る --header ではなくこちらで渡す")
 	fs.Var(&f.allow, "allow", "接続を許可するクライアントの IP / CIDR（複数指定可・未指定で全許可）")
 	fs.StringVar(&f.rc.CACertPath, "ca-cert", "", "HTTPS MITM に使う CA 証明書 PEM のパス（必須）")
 	fs.StringVar(&f.rc.CAKeyPath, "ca-key", "", "HTTPS MITM に使う CA 秘密鍵 PEM のパス（必須）")
@@ -258,9 +262,17 @@ func bindRunFlags(fs *flag.FlagSet, f *runFlags) {
 // 変換する。run サブコマンドと従来形式が共通で通る経路。
 func buildRunCommand(fs *flag.FlagSet, f *runFlags) (*Command, error) {
 	// 繰り返しフラグを RunConfig へ移し、--config 指定時は明示しなかった項目だけ
-	// 設定ファイルの値で埋める。
+	// 設定ファイルの値で埋める。--header-file のヘッダーを先に置き、同名は
+	// --header の明示指定が勝つようにする(重複解決は後勝ち)。
+	fileHeaders, err := readHeaderFiles(f.headerFiles)
+	if err != nil {
+		return nil, err
+	}
+	headers := make([]config.HeaderKV, 0, len(fileHeaders)+len(f.headers))
+	headers = append(headers, fileHeaders...)
+	headers = append(headers, f.headers...)
 	f.rc.Domains = f.domains
-	f.rc.Headers = f.headers
+	f.rc.Headers = headers
 	f.rc.Allow = f.allow
 	if f.configPath != "" {
 		if err := applyConfig(&f.rc, f.configPath, fs); err != nil {
