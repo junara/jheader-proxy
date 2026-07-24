@@ -65,6 +65,12 @@ func (s *Server) Serve(ctx context.Context, cfg usecase.ProxyConfig) error {
 	// CA ポータル(http://jheader.proxy)で配布する CA 証明書を PEM 化しておく。
 	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cfg.CA.Certificate[0]})
 
+	// 発行済みのサーバ証明書を使い回す。これが無いと CONNECT のたびに RSA 鍵生成が
+	// 走り、1ページ分のアセットを捌けなくなる。詳細は certcache.go を参照。
+	proxy.CertStore = newCertCache()
+
+	tuneTransport(proxy.Tr)
+
 	// ロード済みCAから動的にサーバ証明書を発行する TLS 設定。
 	tlsConfig := goproxy.TLSConfigFromCA(cfg.CA)
 	mitm := &goproxy.ConnectAction{Action: goproxy.ConnectMitm, TLSConfig: tlsConfig}
@@ -139,6 +145,31 @@ func (s *Server) Serve(ctx context.Context, cfg usecase.ProxyConfig) error {
 		return <-shutdownErr
 	}
 	return err
+}
+
+// tuneTransport は上流への接続をブラウザの並行アクセス向けに調整する。
+//
+// 主目的は MaxIdleConnsPerHost。goproxy の既定 Transport はこれを設定しないため
+// Go の既定値 2 が使われ、1ページで数十個のアセットを同一ホストから取得すると
+// 3本目以降の接続は毎回破棄されて TCP+TLS ハンドシェイクからやり直しになり、
+// 極端に遅くなる。
+//
+// DialContext は接続タイムアウトを与える(既定の nil ダイアラには接続タイムアウトが
+// ない)。なお goproxy は Tr.DialContext が非nilのとき CONNECT トンネルのダイアルにも
+// これを使う(proxy.dial)。よって MITM 経路だけでなく対象外HTTPSのトンネルにも同じ
+// タイムアウトが効く。これは意図した挙動。
+//
+// goproxy が設定した TLSClientConfig・Proxy と、別フィールドの ConnectDial には触れない。
+func tuneTransport(tr *http.Transport) {
+	if tr == nil {
+		return
+	}
+	tr.DialContext = (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	tr.MaxIdleConns = 256
+	tr.MaxIdleConnsPerHost = 64
+	tr.IdleConnTimeout = 90 * time.Second
+	tr.TLSHandshakeTimeout = 10 * time.Second
+	tr.ExpectContinueTimeout = 1 * time.Second
 }
 
 // cleanShutdownErr は Shutdown の結果を正常終了かどうかに正規化する。

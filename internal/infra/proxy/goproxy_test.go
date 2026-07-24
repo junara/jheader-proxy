@@ -42,18 +42,18 @@ func TestCleanShutdownErr(t *testing.T) {
 }
 
 // testCA は一時CAを生成・ロードして返す。
-func testCA(t *testing.T) *tls.Certificate {
-	t.Helper()
-	dir := t.TempDir()
+func testCA(tb testing.TB) *tls.Certificate {
+	tb.Helper()
+	dir := tb.TempDir()
 	cert := filepath.Join(dir, "ca.pem")
 	key := filepath.Join(dir, "key.pem")
 	store := ca.New()
 	if err := store.Generate(cert, key, false); err != nil {
-		t.Fatalf("generate CA: %v", err)
+		tb.Fatalf("generate CA: %v", err)
 	}
 	loaded, err := store.Load(cert, key)
 	if err != nil {
-		t.Fatalf("load CA: %v", err)
+		tb.Fatalf("load CA: %v", err)
 	}
 	return loaded
 }

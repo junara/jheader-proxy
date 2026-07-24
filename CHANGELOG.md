@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 このプロジェクトの主な変更点を記録します。フォーマットは [Keep a Changelog](https://keepachangelog.com/),バージョニングは [Semantic Versioning](https://semver.org/) に従います。
 
+## [Unreleased]
+
+### Performance
+
+- **proxy**: MITM用サーバ証明書をホストごとにキャッシュするようにした。従来は CONNECT のたびに
+  RSA-2048 の鍵生成が走っており(1回あたり約40ms)、ブラウザが同一ホストへ並行接続する
+  ページではアセットの読み込みが直列化していた。同一ホストへの同時 CONNECT は1回の発行に
+  まとめる。
+- **proxy**: 上流への接続の `MaxIdleConnsPerHost` を引き上げた(既定値2 → 64)。1ページで
+  多数のアセットを取得する際に、3本目以降の接続が毎回破棄されて TCP+TLS ハンドシェイクを
+  やり直していたのを解消する。
+
 ## [0.3.0] - 2026-06-14
 
 ### Features
