@@ -96,6 +96,13 @@ func TestToRunProxyInputInvalidDuration(t *testing.T) {
 	}
 }
 
+func TestToRunProxyInputQuietVerboseConflict(t *testing.T) {
+	// quiet と verbose は矛盾するため、CLI/GUI どちらの入口でも同時指定をエラーにする。
+	if _, err := ToRunProxyInput(RunConfig{Quiet: true, Verbose: true}); err == nil {
+		t.Error("ToRunProxyInput with quiet+verbose returned nil error, want error")
+	}
+}
+
 func TestTrimNonEmpty(t *testing.T) {
 	got := TrimNonEmpty([]string{"  a ", "", "  ", "b"})
 	want := []string{"a", "b"}

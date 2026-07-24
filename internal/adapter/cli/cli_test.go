@@ -30,7 +30,6 @@ func TestParseConfigFile(t *testing.T) {
 		"allow": ["192.168.1.5"],
 		"duration": "30s",
 		"quiet": true,
-		"verbose": true,
 		"redact": true,
 		"caCertPath": "cert.pem",
 		"caKeyPath": "key.pem"
@@ -55,8 +54,8 @@ func TestParseConfigFile(t *testing.T) {
 	if cmd.Run.Duration != 30*time.Second {
 		t.Errorf("Duration = %s, want 30s", cmd.Run.Duration)
 	}
-	if !cmd.Quiet || !cmd.Verbose || !cmd.Run.RedactValues {
-		t.Errorf("Quiet=%v Verbose=%v Redact=%v, want all true", cmd.Quiet, cmd.Verbose, cmd.Run.RedactValues)
+	if !cmd.Quiet || cmd.Verbose || !cmd.Run.RedactValues {
+		t.Errorf("Quiet=%v Verbose=%v Redact=%v, want true/false/true", cmd.Quiet, cmd.Verbose, cmd.Run.RedactValues)
 	}
 	if cmd.Run.CACertPath != "cert.pem" || cmd.Run.CAKeyPath != "key.pem" {
 		t.Errorf("CA paths = (%q, %q), want (cert.pem, key.pem)", cmd.Run.CACertPath, cmd.Run.CAKeyPath)
@@ -391,21 +390,36 @@ func TestParseRuntimeOptions(t *testing.T) {
 		"--ca-key", "key.pem",
 		"--allow", "192.168.1.5",
 		"--allow", "10.0.0.0/8",
-		"--quiet",
 		"--verbose",
 		"--redact",
 	}, io.Discard, io.Discard)
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
-	if !cmd.Quiet || !cmd.Verbose {
-		t.Errorf("Quiet=%v Verbose=%v, want both true", cmd.Quiet, cmd.Verbose)
+	if cmd.Quiet || !cmd.Verbose {
+		t.Errorf("Quiet=%v Verbose=%v, want false/true", cmd.Quiet, cmd.Verbose)
 	}
 	if !cmd.Run.RedactValues {
 		t.Error("RedactValues = false, want true")
 	}
 	if len(cmd.Run.Allow) != 2 {
 		t.Errorf("Allow = %v, want 2 entries", cmd.Run.Allow)
+	}
+}
+
+func TestParseQuietVerboseConflict(t *testing.T) {
+	// --quiet と --verbose は矛盾するため同時指定をエラーにする。
+	_, err := Parse("jheader-proxy", []string{
+		"run",
+		"--domain", "example.test",
+		"--header", "X-Debug-User=jun",
+		"--ca-cert", "cert.pem",
+		"--ca-key", "key.pem",
+		"--quiet",
+		"--verbose",
+	}, io.Discard, io.Discard)
+	if err == nil {
+		t.Error("Parse with --quiet --verbose returned nil error, want error")
 	}
 }
 
