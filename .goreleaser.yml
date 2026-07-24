@@ -27,7 +27,10 @@ homebrew_casks:
   - repository:
       owner: junara
       name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    # tap への push は別ジョブ(homebrew-cask)で行う。ここでは cask ファイルを
+    # dist/ に生成するだけにして、tap トークン(HOMEBREW_TAP_GITHUB_TOKEN)の
+    # 問題がバイナリリリースの失敗として扱われないようにする。
+    skip_upload: "true"
     homepage: "https://github.com/junara/jheader-proxy"
     description: "Local HTTP/HTTPS proxy that adds request headers for target domains (iPhone dev/testing)"
     # 未署名バイナリが Gatekeeper でブロックされないよう quarantine 属性を外す。

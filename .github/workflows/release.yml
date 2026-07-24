@@ -20,13 +20,54 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # tap トークンはここでは使わない。cask ファイルの生成のみ行い、tap への
+      # push は後続の homebrew-cask ジョブに任せることで、tap トークンの問題が
+      # バイナリリリースの失敗として扱われないようにする。
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      # 生成された Homebrew cask を後続ジョブへ受け渡す。
+      - name: Upload Homebrew cask artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-cask
+          path: dist/homebrew/Casks/*.rb
+          if-no-files-found: error
+
+  homebrew-cask:
+    # バイナリリリース(goreleaser)が成功した後に、生成済みの cask を tap へ push する。
+    # このジョブが tap トークンの問題で失敗しても、バイナリリリースには影響しない。
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Homebrew cask artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-cask
+          path: cask
+
+      - name: Push cask to homebrew-tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/junara/homebrew-tap.git" tap
+          mkdir -p tap/Casks
+          cp cask/*.rb tap/Casks/
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/
+          if git diff --staged --quiet; then
+            echo "cask に変更はありません。"
+          else
+            git commit -m "Update jheader-proxy cask to ${{ github.ref_name }}"
+            git push origin HEAD
+          fi
 
   changelog:
     needs: goreleaser
