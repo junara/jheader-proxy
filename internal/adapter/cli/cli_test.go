@@ -135,10 +135,151 @@ func TestParseNoArgsShowsUsage(t *testing.T) {
 		t.Errorf("Parse([]) cmd = %+v, want nil", cmd)
 	}
 	out := buf.String()
-	for _, want := range []string{"使い方:", "--gen-ca", "--gui", "オプション:", "-domain"} {
+	for _, want := range []string{"使い方:", "コマンド:", "run", "gen-ca", "gui", "version"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("usage output missing %q\n--- output ---\n%s", want, out)
 		}
+	}
+}
+
+func TestParseHelpCommand(t *testing.T) {
+	for _, arg := range []string{"help", "-h", "--help"} {
+		var buf bytes.Buffer
+		_, err := Parse("jheader-proxy", []string{arg}, &buf)
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Errorf("Parse([%q]) err = %v, want flag.ErrHelp", arg, err)
+		}
+		if !strings.Contains(buf.String(), "コマンド:") {
+			t.Errorf("Parse([%q]) usage output missing command list", arg)
+		}
+	}
+}
+
+func TestParseRunSubcommand(t *testing.T) {
+	cmd, err := Parse("jheader-proxy", []string{
+		"run",
+		"--listen", ":9090",
+		"--domain", "example.test",
+		"--header", "X-Debug-User=jun",
+		"--ca-cert", "cert.pem",
+		"--ca-key", "key.pem",
+	}, io.Discard)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if cmd.Mode != ModeRun {
+		t.Fatalf("Mode = %v, want ModeRun", cmd.Mode)
+	}
+	if cmd.Run.Listen != ":9090" {
+		t.Errorf("Listen = %q, want :9090", cmd.Run.Listen)
+	}
+	if len(cmd.Run.Domains) != 1 || cmd.Run.Domains[0] != "example.test" {
+		t.Errorf("Domains = %v, want [example.test]", cmd.Run.Domains)
+	}
+}
+
+func TestParseGenCASubcommand(t *testing.T) {
+	// 主フラグ --cert/--key と、run と揃えた別名 --ca-cert/--ca-key の両方を受け付ける。
+	for _, args := range [][]string{
+		{"gen-ca", "--cert", "cert.pem", "--key", "key.pem"},
+		{"gen-ca", "--ca-cert", "cert.pem", "--ca-key", "key.pem"},
+	} {
+		cmd, err := Parse("jheader-proxy", args, io.Discard)
+		if err != nil {
+			t.Fatalf("Parse(%v) returned error: %v", args, err)
+		}
+		if cmd.Mode != ModeGenCA {
+			t.Fatalf("Mode = %v, want ModeGenCA", cmd.Mode)
+		}
+		if cmd.GenCA.CertPath != "cert.pem" || cmd.GenCA.KeyPath != "key.pem" {
+			t.Errorf("GenCA paths = (%q, %q), want (cert.pem, key.pem)", cmd.GenCA.CertPath, cmd.GenCA.KeyPath)
+		}
+		if cmd.GenCA.Force {
+			t.Error("GenCA.Force = true without --force, want false")
+		}
+	}
+}
+
+func TestParseGUISubcommand(t *testing.T) {
+	cmd, err := Parse("jheader-proxy", []string{"gui"}, io.Discard)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if cmd.Mode != ModeGUI {
+		t.Fatalf("Mode = %v, want ModeGUI", cmd.Mode)
+	}
+	if cmd.GUI.Listen != "127.0.0.1:9090" || cmd.GUI.NoOpen {
+		t.Errorf("GUI = %+v, want default listen and NoOpen=false", cmd.GUI)
+	}
+
+	cmd, err = Parse("jheader-proxy", []string{"gui", "--listen", "127.0.0.1:9999", "--no-open"}, io.Discard)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if cmd.GUI.Listen != "127.0.0.1:9999" || !cmd.GUI.NoOpen {
+		t.Errorf("GUI = %+v, want listen=127.0.0.1:9999 NoOpen=true", cmd.GUI)
+	}
+}
+
+func TestParseVersionSubcommand(t *testing.T) {
+	cmd, err := Parse("jheader-proxy", []string{"version"}, io.Discard)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if cmd.Mode != ModeVersion {
+		t.Errorf("Mode = %v, want ModeVersion", cmd.Mode)
+	}
+}
+
+func TestParseUnknownCommandSuggests(t *testing.T) {
+	_, err := Parse("jheader-proxy", []string{"gen-cert"}, io.Discard)
+	if err == nil {
+		t.Fatal("Parse with unknown command returned nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "gen-ca") {
+		t.Errorf("error %q does not suggest \"gen-ca\"", err)
+	}
+}
+
+func TestParseSubcommandRejectsPositionalArg(t *testing.T) {
+	_, err := Parse("jheader-proxy", []string{"gui", "extra"}, io.Discard)
+	if err == nil {
+		t.Error("Parse('gui extra') returned nil error, want error")
+	}
+}
+
+func TestParseLegacyModeConflict(t *testing.T) {
+	_, err := Parse("jheader-proxy", []string{"--gui", "--gen-ca"}, io.Discard)
+	if err == nil {
+		t.Error("Parse with --gui --gen-ca returned nil error, want error")
+	}
+}
+
+func TestParseLegacyDeprecationWarning(t *testing.T) {
+	var buf bytes.Buffer
+	_, err := Parse("jheader-proxy", []string{
+		"--gen-ca", "--ca-cert", "cert.pem", "--ca-key", "key.pem",
+	}, &buf)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "非推奨") {
+		t.Errorf("deprecation warning missing\n--- output ---\n%s", buf.String())
+	}
+}
+
+func TestParseLegacyVersionNoWarning(t *testing.T) {
+	// --version は慣習的なフラグなので警告なしで受け付ける。
+	var buf bytes.Buffer
+	cmd, err := Parse("jheader-proxy", []string{"--version"}, &buf)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if cmd.Mode != ModeVersion {
+		t.Errorf("Mode = %v, want ModeVersion", cmd.Mode)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("unexpected output for --version: %q", buf.String())
 	}
 }
 

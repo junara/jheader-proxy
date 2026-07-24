@@ -50,7 +50,7 @@ HTTPS通信にヘッダーを追加するには、対象ドメインの通信を
 go build -o jheader-proxy ./cmd/jheader-proxy
 
 # 自分専用のCAを生成する（秘密鍵はこのMacにしか存在しない）
-./jheader-proxy --gen-ca --ca-cert jheader-proxy-ca-cert.pem --ca-key jheader-proxy-ca-key.pem
+./jheader-proxy gen-ca --cert jheader-proxy-ca-cert.pem --key jheader-proxy-ca-key.pem
 ```
 
 - `jheader-proxy-ca-cert.pem` … iPhoneにインストールするCA証明書
@@ -63,7 +63,7 @@ go build -o jheader-proxy ./cmd/jheader-proxy
 CA生成後、`--ca-cert` と `--ca-key` を指定して起動します（どちらも必須）。
 
 ```bash
-go run ./cmd/jheader-proxy \
+go run ./cmd/jheader-proxy run \
   --listen ":8080" \
   --domain "example.test" \
   --header "X-Debug-User=jun" \
@@ -74,7 +74,7 @@ go run ./cmd/jheader-proxy \
 ビルド後:
 
 ```bash
-./jheader-proxy \
+./jheader-proxy run \
   --listen ":8080" \
   --domain "example.test" \
   --header "X-Debug-User=jun" \
@@ -82,12 +82,14 @@ go run ./cmd/jheader-proxy \
   --ca-key jheader-proxy-ca-key.pem
 ```
 
+> 従来のサブコマンドなしのフラグ形式（`--gen-ca` / `--gui` を含む）も後方互換のため動作しますが、非推奨です（起動時に警告を表示します）。
+
 ## GUI（ローカルWeb管理画面）
 
 CLI引数を手で組み立てる代わりに、ブラウザから設定・起動/停止・CA生成・ログ閲覧ができます。
 
 ```bash
-./jheader-proxy --gui
+./jheader-proxy gui
 ```
 
 ![jheader-proxy の Web GUI 管理画面](docs/src/assets/gui-light.png)
@@ -100,18 +102,17 @@ CLI引数を手で組み立てる代わりに、ブラウザから設定・起�
 
 管理画面は `127.0.0.1` 限定で待ち受け、起動毎のランダムトークンでAPIを保護します（LANやiPhoneからは触れません）。
 
-| GUI用の引数 | 説明 |
+| `gui` のオプション | 説明 |
 | --- | --- |
-| `--gui` | ローカルWeb管理画面を起動する |
-| `--gui-listen` | 管理画面の待受アドレス。デフォルトは `127.0.0.1:9090`。任意に変更可。指定ポートが使用中ならフォールバックせずエラーになる |
-| `--no-open` | `--gui` 時にブラウザを自動起動しない |
+| `--listen` | 管理画面の待受アドレス。デフォルトは `127.0.0.1:9090`。任意に変更可。指定ポートが使用中ならフォールバックせずエラーになる |
+| `--no-open` | ブラウザを自動起動しない |
 
 ## 設定ファイル（`--config`）
 
 毎回長い引数を打つ代わりに、設定を JSON 1枚にまとめて `--config` で読み込めます。
 
 ```bash
-./jheader-proxy --config jheader-proxy.json
+./jheader-proxy run --config jheader-proxy.json
 ```
 
 設定ファイルの例（全項目は任意。省略した項目は既定値になります）:
@@ -137,16 +138,26 @@ CLI引数を手で組み立てる代わりに、ブラウザから設定・起�
 
   ```bash
   # 設定ファイルの listen を無視して :9090 で起動する
-  ./jheader-proxy --config jheader-proxy.json --listen :9090
+  ./jheader-proxy run --config jheader-proxy.json --listen :9090
   ```
 
 - `--domain` / `--header` / `--allow` は、コマンドラインで1つでも指定すると設定ファイルのリストを**置き換え**ます（マージはしません）。
-- この形式は **GUI（`--gui`）が保存する `config.json` と互換**です。`--config "$HOME/Library/Application Support/jheader-proxy/config.json"` のように、GUIで作った設定をCLIでそのまま使えます。
+- この形式は **GUI（`gui`）が保存する `config.json` と互換**です。`--config "$HOME/Library/Application Support/jheader-proxy/config.json"` のように、GUIで作った設定をCLIでそのまま使えます。
 - ヘッダー値に認証トークン等が入りうるため、設定ファイルのパーミッションは絞ること（例: `chmod 600`）。
 
-## CLI引数
+## コマンドとオプション
 
-| 引数 | 説明 |
+| コマンド | 説明 |
+| --- | --- |
+| `run` | ヘッダーを付与するプロキシを起動する |
+| `gen-ca` | 自分専用のCA証明書・秘密鍵を生成する（HTTPSに必須） |
+| `gui` | ブラウザで操作するローカルWeb管理画面を起動する |
+| `version` | バージョンを表示して終了する（`--version` でも可） |
+| `help` | 使い方を表示する（各コマンドの詳細は `jheader-proxy <コマンド> --help`） |
+
+`run` のオプション:
+
+| オプション | 説明 |
 | --- | --- |
 | `--config` | 設定をまとめた JSON ファイルのパス。GUIの `config.json` と互換。コマンドライン引数が設定ファイルより優先される |
 | `--listen` | プロキシの待ち受けアドレス。デフォルトは `:8080` |
@@ -159,9 +170,14 @@ CLI引数を手で組み立てる代わりに、ブラウザから設定・起�
 | `--redact` | 起動ログで全ヘッダー値をマスクする |
 | `--quiet` | リクエストごとのログ（`[MITM]`/`[TUNNEL]`/`[ADD HEADER]`）を抑制する |
 | `--verbose` | 対象ドメインのレスポンスもログ出力する（`[RESP]`） |
-| `--gen-ca` | `--ca-cert`/`--ca-key` のパスに新しいCAを生成して終了する |
-| `--force` | `--gen-ca` 時に既存ファイルを上書きする |
-| `--version` | バージョンを表示して終了する |
+
+`gen-ca` のオプション:
+
+| オプション | 説明 |
+| --- | --- |
+| `--cert` | 生成するCA証明書PEMの出力先パス。必須（`--ca-cert` でも可） |
+| `--key` | 生成するCA秘密鍵PEMの出力先パス。必須（`--ca-key` でも可） |
+| `--force` | 既存ファイルを上書きする |
 
 > `--allow` を指定すると、許可リストにないクライアントの接続は受理時に拒否し `[DENY] <IP>` をログ出力します。共有Wi-Fiでは、iPhoneのIPを `--allow` で限定しておくと、第三者にプロキシを使われる事故を防げます。
 >
@@ -221,7 +237,7 @@ https://example.com/
 
 ## HTTPS利用時の注意
 
-HTTPS通信にヘッダーを追加するには、`--gen-ca` で生成した**自分専用のCA証明書（`jheader-proxy-ca-cert.pem`）**をiPhoneにインストールし、信頼設定を有効化する必要があります。組み込みCAは使わないため、秘密鍵は生成したMac上にしか存在しません。
+HTTPS通信にヘッダーを追加するには、`gen-ca` で生成した**自分専用のCA証明書（`jheader-proxy-ca-cert.pem`）**をiPhoneにインストールし、信頼設定を有効化する必要があります。組み込みCAは使わないため、秘密鍵は生成したMac上にしか存在しません。
 
 iPhoneに送るのは**証明書（`jheader-proxy-ca-cert.pem`）だけ**です。秘密鍵（`jheader-proxy-ca-key.pem`）は絶対に送らないでください。
 
@@ -303,7 +319,7 @@ Wi-Fiが `en0` でない、または `en0` にIPが無い場合に起こりま�
 
 ## 動作確認方法
 
-1. ローカルで起動する（事前に `--gen-ca` でCAを生成しておく）
+1. ローカルで起動する（事前に `gen-ca` でCAを生成しておく）
 
    ```bash
    go run ./cmd/jheader-proxy \
@@ -345,7 +361,7 @@ headers:
 
 `--allow` 指定時は `allowed clients: ...` 行が、機密ヘッダーや `--redact` 指定時は値が `***` で出ます。
 
-CA証明書の有効期限と残り日数を `CA expires: ...` 行で表示します。残り14日以内になると `WARNING: CA certificate expires soon: ...`、期限切れなら `WARNING: CA certificate expired on ...` を出すので、検証端末でCAを更新し忘れて MITM が突然失敗するのを未然に防げます（更新は `--gen-ca --force` で再生成し、iPhoneへ入れ直してください）。
+CA証明書の有効期限と残り日数を `CA expires: ...` 行で表示します。残り14日以内になると `WARNING: CA certificate expires soon: ...`、期限切れなら `WARNING: CA certificate expired on ...` を出すので、検証端末でCAを更新し忘れて MITM が突然失敗するのを未然に防げます（更新は `gen-ca --force` で再生成し、iPhoneへ入れ直してください）。
 
 リクエストごと:
 
@@ -397,7 +413,7 @@ go build -ldflags "-X main.version=v1.0.0" -o jheader-proxy ./cmd/jheader-proxy
 │   ├── adapter/                 # インターフェースアダプタ（入力 → ユースケース）
 │   │   ├── cli/                 #   フラグ解析・--config のマージ
 │   │   │   └── cli.go
-│   │   └── web/                 #   ローカルWeb GUI（--gui）
+│   │   └── web/                 #   ローカルWeb GUI（gui）
 │   │       ├── server.go        #     管理画面サーバ・ルーティング・トークン保護
 │   │       ├── controller.go    #     プロキシの開始/停止と状態管理
 │   │       ├── config.go        #     設定の永続化（config.json）
