@@ -6,7 +6,7 @@ description: CA生成から iPhone での確認までの最短手順
 import { Steps } from '@astrojs/starlight/components';
 
 :::tip[ブラウザから操作したい場合]
-`./jheader-proxy --gui` で管理画面が開き、CA生成・設定・起動/停止・ログ閲覧をブラウザから行えます。詳しくは [Web GUI](/jheader-proxy/usage/gui/) を参照してください。以下は CLI での手順です。
+`./jheader-proxy gui` で管理画面が開き、CA生成・設定・起動/停止・ログ閲覧をブラウザから行えます。詳しくは [Web GUI](/jheader-proxy/usage/gui/) を参照してください。以下は CLI での手順です。
 :::
 
 <Steps>
@@ -16,15 +16,15 @@ import { Steps } from '@astrojs/starlight/components';
    HTTPS にヘッダーを付与するには CA が必須です。組み込みCAは使わず、必ず自分で生成します。
 
    ```bash
-   ./jheader-proxy --gen-ca \
-     --ca-cert jheader-proxy-ca-cert.pem \
-     --ca-key jheader-proxy-ca-key.pem
+   ./jheader-proxy gen-ca \
+     --cert jheader-proxy-ca-cert.pem \
+     --key jheader-proxy-ca-key.pem
    ```
 
 2. **プロキシを起動する**
 
    ```bash
-   ./jheader-proxy \
+   ./jheader-proxy run \
      --listen ":8080" \
      --domain "example.test" \
      --header "X-Debug-User=jun" \

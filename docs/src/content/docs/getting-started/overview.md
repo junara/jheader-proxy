@@ -23,7 +23,7 @@ Mac: jheader-proxy (:8080)
 - **対象ドメイン**（`--domain` 指定とそのサブドメイン）への通信のみ MITM し、ヘッダーを付与します。
 - それ以外のドメインは MITM せず、通常の CONNECT トンネルとして中継します。
 
-CLI 引数での起動のほか、ブラウザから設定・起動/停止・CA生成・ログ閲覧ができる[Web GUI](/jheader-proxy/usage/gui/)（`--gui`）も利用できます。
+CLI（`run` コマンド）での起動のほか、ブラウザから設定・起動/停止・CA生成・ログ閲覧ができる[Web GUI](/jheader-proxy/usage/gui/)（`gui` コマンド）も利用できます。
 
 ## 対象環境
 

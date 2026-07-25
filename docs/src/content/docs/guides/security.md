@@ -17,7 +17,7 @@ CA を信頼している端末は、その秘密鍵を持つ者に全 HTTPS 通�
 
 ## 自分専用CAを使う
 
-組み込みCAは秘密鍵が公開されており危険なため使いません。必ず `--gen-ca` で自分専用 CA を生成し、秘密鍵（`jheader-proxy-ca-key.pem`）は **Git 管理・共有しない**でください。
+組み込みCAは秘密鍵が公開されており危険なため使いません。必ず `gen-ca` コマンドで自分専用 CA を生成し、秘密鍵（`jheader-proxy-ca-key.pem`）は **Git 管理・共有しない**でください。
 
 ## クライアントを限定する
 
@@ -26,6 +26,18 @@ CA を信頼している端末は、その秘密鍵を持つ者に全 HTTPS 通�
 ## 機密ヘッダーの扱い
 
 `Authorization` / `Cookie` / `X-Api-Key` などは機密情報です。起動ログでは自動マスクされますが、扱う場合はログの取り扱いに注意してください。`--redact` で全値をマスクできます。
+
+認証トークン等の秘匿値を `--header` で直接指定すると、シェル履歴や `ps` の出力にそのまま残ります。秘匿値は `--header-file`（`chmod 600` したファイル）または `--config` の設定ファイル経由で渡してください。
+
+```bash
+# headers.txt（1行1件の Name=Value。# 始まりはコメント、パーミッションは 0600 に）
+#   Authorization=Bearer <token>
+./jheader-proxy run \
+  --domain example.test \
+  --header-file headers.txt \
+  --ca-cert jheader-proxy-ca-cert.pem \
+  --ca-key jheader-proxy-ca-key.pem
+```
 
 ## 自動停止
 

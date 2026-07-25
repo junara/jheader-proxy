@@ -5,7 +5,7 @@ description: ヘッダーの指定方法と、対象ドメインの判定ルー�
 
 ## ヘッダーの指定
 
-`--header "Name=Value"` 形式で指定します。複数回指定でき、1つ以上必須です。
+`--header "Name=Value"` 形式で指定します。複数回指定でき、`--header-file`（後述）と合わせて1つ以上必須です。
 
 ```bash
 --header "X-Debug-User=jun"
@@ -22,6 +22,31 @@ description: ヘッダーの指定方法と、対象ドメインの判定ルー�
 - 同名を複数指定した場合は後勝ち
 
 値は常に文字列として送られます（例: `123` は数値ではなく文字列）。
+
+## ファイルからヘッダーを渡す（--header-file）
+
+認証トークンなどの秘匿値は、`--header` で直接渡すとシェル履歴や `ps` の出力に残ります。1行1件の `Name=Value` を書いたファイルを `--header-file` で渡せば、これを避けられます。
+
+```bash
+./jheader-proxy run \
+  --domain example.test \
+  --header-file headers.txt \
+  --ca-cert jheader-proxy-ca-cert.pem \
+  --ca-key jheader-proxy-ca-key.pem
+```
+
+```text title="headers.txt"
+# 検証用の秘匿ヘッダー（この行はコメント）
+Authorization=Bearer dummy-token
+X-Debug-User=jun
+```
+
+- 空行と `#` 始まりの行は無視します
+- 書式・trim・重複解決のルールは `--header` と同じです
+- `--header` と併用でき、同名は `--header` の明示指定が勝ちます
+- ファイルには認証情報が入りうるため、パーミッションを絞ってください（例: `chmod 600 headers.txt`）
+
+詳しくは[セキュリティ](/jheader-proxy/guides/security/)を参照してください。
 
 ## 対象ドメインの判定
 
