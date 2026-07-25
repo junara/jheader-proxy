@@ -6,6 +6,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -80,6 +81,10 @@ func HeadersToSpecs(headers []HeaderKV) []string {
 // CLI と GUI の両方がこの関数を通すことで、ヘッダー解釈・duration 解釈・trim/空要素
 // 除去のルールが一元化される。OnReady は呼び出し側で設定する。
 func ToRunProxyInput(cfg RunConfig) (usecase.RunProxyInput, error) {
+	// quiet と verbose は矛盾する指定なので、どちらを意図したか判断せずエラーにする。
+	if cfg.Quiet && cfg.Verbose {
+		return usecase.RunProxyInput{}, errors.New("quiet and verbose cannot be enabled at the same time")
+	}
 	headers, err := domain.ParseHeaders(HeadersToSpecs(cfg.Headers))
 	if err != nil {
 		return usecase.RunProxyInput{}, err

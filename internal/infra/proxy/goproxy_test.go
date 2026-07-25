@@ -58,6 +58,28 @@ func testCA(tb testing.TB) *tls.Certificate {
 	return loaded
 }
 
+func TestServeListenAddrInUseHint(t *testing.T) {
+	// 使用中のアドレスへの bind 失敗には、原因と次の一手(--listen での変更)を添える。
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = l.Close() }()
+
+	cfg := usecase.ProxyConfig{
+		Listen:  l.Addr().String(),
+		Matcher: domain.NewMatcher([]string{"example.test"}),
+		CA:      testCA(t),
+	}
+	err = New(nopLogger{}, Options{}).Serve(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("Serve returned nil error, want address-in-use error")
+	}
+	if !strings.Contains(err.Error(), cfg.Listen) || !strings.Contains(err.Error(), "--listen") {
+		t.Errorf("error %q should mention the address and the --listen hint", err)
+	}
+}
+
 // freeAddr は使用可能な 127.0.0.1 のアドレスを返す。
 func freeAddr(t *testing.T) string {
 	t.Helper()

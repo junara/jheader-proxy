@@ -8,9 +8,9 @@ HTTPS 通信にヘッダーを付与するには、対象ドメインの通信�
 ## CAを生成する
 
 ```bash
-./jheader-proxy --gen-ca \
-  --ca-cert jheader-proxy-ca-cert.pem \
-  --ca-key jheader-proxy-ca-key.pem
+./jheader-proxy gen-ca \
+  --cert jheader-proxy-ca-cert.pem \
+  --key jheader-proxy-ca-key.pem
 ```
 
 - `jheader-proxy-ca-cert.pem` … iPhone にインストールする CA 証明書

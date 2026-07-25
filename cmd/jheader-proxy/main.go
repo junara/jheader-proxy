@@ -28,7 +28,7 @@ import (
 var version = "dev"
 
 func main() {
-	cmd, err := cli.Parse("jheader-proxy", os.Args[1:], os.Stderr)
+	cmd, err := cli.Parse("jheader-proxy", os.Args[1:], os.Stdout, os.Stderr)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return
