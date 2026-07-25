@@ -65,7 +65,7 @@ func (u *RunProxy) Execute(ctx context.Context, in RunProxyInput) error {
 		return errors.New("at least one --domain is required")
 	}
 	if in.Headers.Len() == 0 {
-		return errors.New("at least one --header is required")
+		return errors.New("at least one --header (or --header-file) is required")
 	}
 	if in.CACertPath == "" || in.CAKeyPath == "" {
 		return errors.New("--ca-cert and --ca-key are required (generate one with the 'gen-ca' command)")

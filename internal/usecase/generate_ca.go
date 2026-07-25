@@ -22,7 +22,7 @@ func NewGenerateCA(gen CAGenerator) *GenerateCA {
 // Execute は入力を検証してCAを生成する。
 func (u *GenerateCA) Execute(in GenerateCAInput) error {
 	if in.CertPath == "" || in.KeyPath == "" {
-		return errors.New("--gen-ca requires both --ca-cert and --ca-key (output paths)")
+		return errors.New("gen-ca requires both --cert and --key (output paths)")
 	}
 	return u.gen.Generate(in.CertPath, in.KeyPath, in.Force)
 }

@@ -115,6 +115,26 @@ func TestParseConfigBlankDomainsTrimmed(t *testing.T) {
 	}
 }
 
+func TestParseConfigQuietOverriddenByVerboseFlag(t *testing.T) {
+	// 設定ファイルの quiet:true は、フラグで --verbose を明示したら無視される
+	// (quiet/verbose はペアで扱い、フラグ明示 > 設定ファイルの優先順位を保つ)。
+	path := writeConfig(t, `{
+		"domains": ["example.test"],
+		"headers": [{"name": "X-Debug-User", "value": "jun"}],
+		"quiet": true,
+		"caCertPath": "cert.pem",
+		"caKeyPath": "key.pem"
+	}`)
+
+	cmd, err := Parse("jheader-proxy", []string{"run", "--config", path, "--verbose"}, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if cmd.Quiet || !cmd.Verbose {
+		t.Errorf("Quiet=%v Verbose=%v, want false/true (explicit flag wins over config pair)", cmd.Quiet, cmd.Verbose)
+	}
+}
+
 func TestParseConfigMissingFile(t *testing.T) {
 	_, err := Parse("jheader-proxy", []string{
 		"--config", filepath.Join(t.TempDir(), "does-not-exist.json"),
@@ -160,6 +180,26 @@ func TestParseHelpCommand(t *testing.T) {
 		if stderr.Len() != 0 {
 			t.Errorf("Parse([%q]) wrote to stderr: %q", arg, stderr.String())
 		}
+	}
+}
+
+func TestParseHelpWithCommand(t *testing.T) {
+	// 'help <コマンド>' はそのコマンドの使い方を stdout へ出す。
+	var stdout, stderr bytes.Buffer
+	_, err := Parse("jheader-proxy", []string{"help", "run"}, &stdout, &stderr)
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("Parse(['help', 'run']) err = %v, want flag.ErrHelp", err)
+	}
+	if !strings.Contains(stdout.String(), "run -") || !strings.Contains(stdout.String(), "-domain") {
+		t.Errorf("run usage missing from stdout\n--- stdout ---\n%s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("help run wrote to stderr: %q", stderr.String())
+	}
+
+	// 未知のコマンド名はエラーにする。
+	if _, err := Parse("jheader-proxy", []string{"help", "bogus"}, io.Discard, io.Discard); err == nil {
+		t.Error("Parse(['help', 'bogus']) returned nil error, want error")
 	}
 }
 

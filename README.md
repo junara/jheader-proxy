@@ -153,7 +153,7 @@ CLI引数を手で組み立てる代わりに、ブラウザから設定・起�
 | `gen-ca` | 自分専用のCA証明書・秘密鍵を生成する（HTTPSに必須） |
 | `gui` | ブラウザで操作するローカルWeb管理画面を起動する |
 | `version` | バージョンを表示して終了する（`--version` でも可） |
-| `help` | 使い方を表示する（各コマンドの詳細は `jheader-proxy <コマンド> --help`） |
+| `help` | 使い方を表示する（各コマンドの詳細は `jheader-proxy help <コマンド>` または `jheader-proxy <コマンド> --help`） |
 
 `run` のオプション:
 

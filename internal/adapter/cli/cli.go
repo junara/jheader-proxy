@@ -113,10 +113,10 @@ func applyConfig(rc *config.RunConfig, path string, fs *flag.FlagSet) error {
 	if !set["duration"] {
 		rc.Duration = fc.Duration
 	}
-	if !set["quiet"] {
+	// quiet / verbose は矛盾しうるペアなので、どちらかがフラグで明示されたら設定
+	// ファイルの両方の値を無視する(設定に quiet があっても --verbose 明示が勝つ)。
+	if !set["quiet"] && !set["verbose"] {
 		rc.Quiet = fc.Quiet
-	}
-	if !set["verbose"] {
 		rc.Verbose = fc.Verbose
 	}
 	if !set["redact"] {
@@ -136,7 +136,7 @@ const rootUsageTemplate = `%[1]s - 対象ドメインへのリクエストに HT
   gen-ca   自分専用の CA 証明書・秘密鍵を生成する（HTTPS に必須）
   gui      ブラウザで操作するローカル Web 管理画面を起動する
   version  バージョンを表示する
-  help     この使い方を表示する
+  help     使い方を表示する（'help <コマンド>' で各コマンドの詳細）
 
 例:
   %[1]s gen-ca --cert ca-cert.pem --key ca-key.pem
@@ -236,8 +236,7 @@ func Parse(name string, args []string, stdout, stderr io.Writer) (*Command, erro
 
 	switch args[0] {
 	case cmdHelp, "-h", "-help", helpFlag:
-		writeRootUsage(stdout, name)
-		return nil, flag.ErrHelp
+		return parseHelp(name, args[1:], stdout)
 	case cmdVersion:
 		return &Command{Mode: ModeVersion}, nil
 	case cmdRun:
@@ -251,6 +250,27 @@ func Parse(name string, args []string, stdout, stderr io.Writer) (*Command, erro
 	// フラグで始まる場合は従来のフラグ形式(非推奨)として受け付ける。
 	if strings.HasPrefix(args[0], "-") {
 		return parseLegacy(name, args, stdout, stderr)
+	}
+	return nil, unknownCommandError(name, args[0])
+}
+
+// parseHelp は help コマンドを解析する。引数なしなら全体の使い方を、コマンド名
+// 付き(help run 等)ならそのコマンドの使い方を stdout へ書き出す。
+func parseHelp(name string, args []string, stdout io.Writer) (*Command, error) {
+	if len(args) == 0 {
+		writeRootUsage(stdout, name)
+		return nil, flag.ErrHelp
+	}
+	switch args[0] {
+	case cmdRun:
+		return parseRun(name, []string{helpFlag}, stdout)
+	case cmdGenCA:
+		return parseGenCA(name, []string{helpFlag}, stdout)
+	case cmdGUI:
+		return parseGUI(name, []string{helpFlag}, stdout)
+	case cmdVersion, cmdHelp:
+		writeRootUsage(stdout, name)
+		return nil, flag.ErrHelp
 	}
 	return nil, unknownCommandError(name, args[0])
 }
