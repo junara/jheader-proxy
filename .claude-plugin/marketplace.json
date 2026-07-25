@@ -1,0 +1,30 @@
+{
+  "name": "junara-tools",
+  "owner": {
+    "name": "junara"
+  },
+  "description": "junara のツール向け Claude Code プラグインカタログ。",
+  "plugins": [
+    {
+      "name": "jheader-proxy",
+      "source": "./plugins/jheader-proxy",
+      "description": "対象ドメインへのリクエストに HTTP ヘッダーを付与するローカル HTTP/HTTPS プロキシ CLI（run / gen-ca / gui）の利用ガイド skill。",
+      "author": {
+        "name": "junara"
+      },
+      "homepage": "https://junara.github.io/jheader-proxy/",
+      "repository": "https://github.com/junara/jheader-proxy",
+      "license": "MIT",
+      "keywords": [
+        "proxy",
+        "http",
+        "https",
+        "mitm",
+        "iphone",
+        "header",
+        "debugging"
+      ],
+      "category": "developer-tools"
+    }
+  ]
+}

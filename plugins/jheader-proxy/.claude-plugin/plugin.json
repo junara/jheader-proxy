@@ -1,0 +1,19 @@
+{
+  "name": "jheader-proxy",
+  "description": "Guide skill for jheader-proxy — a local HTTP/HTTPS proxy CLI that appends request headers to specific domains for iPhone/Android debugging.",
+  "author": {
+    "name": "junara"
+  },
+  "homepage": "https://junara.github.io/jheader-proxy/",
+  "repository": "https://github.com/junara/jheader-proxy",
+  "license": "MIT",
+  "keywords": [
+    "proxy",
+    "http",
+    "https",
+    "mitm",
+    "iphone",
+    "header",
+    "debugging"
+  ]
+}

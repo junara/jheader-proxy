@@ -42,6 +42,17 @@ go build -o jheader-proxy ./cmd/jheader-proxy
 go install github.com/junara/jheader-proxy/cmd/jheader-proxy@latest
 ```
 
+## Claude Code プラグイン（skill）
+
+このリポジトリは Claude Code の**プラグインマーケットプレイス**を兼ねており、`jheader-proxy` の使い方をまとめた skill を配布しています。Claude Code に取り込むと、CLI の使い方（`run` / `gen-ca` / `gui`、`--header-file` での秘匿ヘッダーの渡し方、設定ファイルなど）を Claude が参照できます。
+
+```text
+/plugin marketplace add junara/jheader-proxy
+/plugin install jheader-proxy@junara-tools
+```
+
+skill は `plugins/jheader-proxy/` にあり、`.claude-plugin/marketplace.json` がカタログです。更新は `/plugin marketplace update junara-tools` で反映されます。
+
 ## 事前準備: CA証明書の生成（必須）
 
 HTTPS通信にヘッダーを追加するには、対象ドメインの通信をMITM（TLSの復号・再暗号化）する必要があり、そのためのCA証明書・秘密鍵が必須です。組み込みのCAは使いません（秘密鍵が公開されており危険なため）。**必ず自分専用のCAを生成してください。**

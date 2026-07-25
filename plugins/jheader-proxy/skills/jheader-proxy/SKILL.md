@@ -1,7 +1,7 @@
 ---
 description: Guide to using `jheader-proxy`, a local HTTP/HTTPS proxy CLI that appends request headers to specific domains for iPhone/Android debugging. Covers subcommands run / gen-ca / gui / version, HTTPS MITM via a self-generated CA, the config file, and safe handling of secret headers.
 metadata:
-    github-path: skills/jheader-proxy
+    github-path: plugins/jheader-proxy
     github-repo: https://github.com/junara/jheader-proxy
 name: jheader-proxy
 ---
